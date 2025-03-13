@@ -1,16 +1,15 @@
 import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
-import authService, { User, LoginCredentials, RegisterData, ProfileUpdateData } from '../services/authService';
+import { useRouter } from 'next/router';
+import authService, { User, LoginCredentials, RegisterData } from '../services/authService';
 
 interface AuthContextType {
   user: User | null;
   loading: boolean;
   error: string | null;
-  isAuthenticated: boolean;
   login: (credentials: LoginCredentials) => Promise<void>;
-  register: (userData: RegisterData) => Promise<void>;
+  register: (data: RegisterData) => Promise<void>;
   logout: () => void;
-  updateProfile: (profileData: ProfileUpdateData) => Promise<void>;
-  clearError: () => void;
+  updateUser: (userData: Partial<User>) => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -31,45 +30,35 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [isAuthenticated, setIsAuthenticated] = useState(false);
+  const router = useRouter();
 
-  // Check if user is already logged in on initial load
+  // Check if user is logged in on initial load
   useEffect(() => {
-    const initAuth = async () => {
+    const checkAuth = async () => {
       try {
         if (authService.isAuthenticated()) {
-          const currentUser = authService.getCurrentUser();
-          if (currentUser) {
-            setUser(currentUser);
-            setIsAuthenticated(true);
-            
-            // Optionally refresh user data from the server
-            try {
-              const freshUserData = await authService.getProfile();
-              setUser(freshUserData);
-            } catch (err) {
-              // If there's an error fetching fresh data, we still have the stored user
-              console.error('Error refreshing user data:', err);
-            }
-          }
+          const userData = await authService.getProfile();
+          setUser(userData);
         }
       } catch (err) {
-        console.error('Auth initialization error:', err);
+        console.error('Authentication check failed:', err);
+        authService.logout();
       } finally {
         setLoading(false);
       }
     };
 
-    initAuth();
+    checkAuth();
   }, []);
 
+  // Login function
   const login = async (credentials: LoginCredentials) => {
     setLoading(true);
     setError(null);
     try {
-      const response = await authService.login(credentials);
-      setUser(response.user);
-      setIsAuthenticated(true);
+      const { user } = await authService.login(credentials);
+      setUser(user);
+      router.push('/dashboard');
     } catch (err: any) {
       setError(err.response?.data?.message || 'Login failed. Please try again.');
       throw err;
@@ -78,13 +67,14 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     }
   };
 
-  const register = async (userData: RegisterData) => {
+  // Register function
+  const register = async (data: RegisterData) => {
     setLoading(true);
     setError(null);
     try {
-      const response = await authService.register(userData);
-      setUser(response.user);
-      setIsAuthenticated(true);
+      const { user } = await authService.register(data);
+      setUser(user);
+      router.push('/dashboard');
     } catch (err: any) {
       setError(err.response?.data?.message || 'Registration failed. Please try again.');
       throw err;
@@ -93,40 +83,36 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     }
   };
 
+  // Logout function
   const logout = () => {
     authService.logout();
     setUser(null);
-    setIsAuthenticated(false);
+    router.push('/login');
   };
 
-  const updateProfile = async (profileData: ProfileUpdateData) => {
+  // Update user data
+  const updateUser = async (userData: Partial<User>) => {
     setLoading(true);
     setError(null);
     try {
-      const updatedUser = await authService.updateProfile(profileData);
+      const updatedUser = await authService.updateProfile(userData);
       setUser(updatedUser);
     } catch (err: any) {
-      setError(err.response?.data?.message || 'Failed to update profile. Please try again.');
+      setError(err.response?.data?.message || 'Failed to update profile.');
       throw err;
     } finally {
       setLoading(false);
     }
   };
 
-  const clearError = () => {
-    setError(null);
-  };
-
   const value = {
     user,
     loading,
     error,
-    isAuthenticated,
     login,
     register,
     logout,
-    updateProfile,
-    clearError
+    updateUser,
   };
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
