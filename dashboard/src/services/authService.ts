@@ -15,7 +15,8 @@ export interface User {
   id: string;
   name: string;
   email: string;
-  role: string;
+  telegramId?: string;
+  telegramUsername?: string;
   createdAt: string;
   updatedAt: string;
 }
@@ -33,21 +34,23 @@ export interface ProfileUpdateData {
 }
 
 const authService = {
-  // Login user
+  // Login user and return token and user data
   login: async (credentials: LoginCredentials): Promise<AuthResponse> => {
     const response = await api.post<AuthResponse>('/auth/login', credentials);
-    // Store token and user in localStorage
-    localStorage.setItem('token', response.data.token);
-    localStorage.setItem('user', JSON.stringify(response.data.user));
+    // Store token in localStorage
+    if (typeof window !== 'undefined') {
+      localStorage.setItem('token', response.data.token);
+    }
     return response.data;
   },
 
-  // Register new user
+  // Register a new user
   register: async (userData: RegisterData): Promise<AuthResponse> => {
     const response = await api.post<AuthResponse>('/auth/register', userData);
-    // Store token and user in localStorage
-    localStorage.setItem('token', response.data.token);
-    localStorage.setItem('user', JSON.stringify(response.data.user));
+    // Store token in localStorage
+    if (typeof window !== 'undefined') {
+      localStorage.setItem('token', response.data.token);
+    }
     return response.data;
   },
 
@@ -58,24 +61,24 @@ const authService = {
   },
 
   // Update user profile
-  updateProfile: async (profileData: ProfileUpdateData): Promise<User> => {
-    const response = await api.put<User>('/auth/profile', profileData);
-    // Update stored user data
-    const currentUser = JSON.parse(localStorage.getItem('user') || '{}');
-    const updatedUser = { ...currentUser, ...response.data };
-    localStorage.setItem('user', JSON.stringify(updatedUser));
+  updateProfile: async (userData: Partial<User>): Promise<User> => {
+    const response = await api.put<User>('/auth/profile', userData);
     return response.data;
   },
 
   // Logout user
-  logout: () => {
-    localStorage.removeItem('token');
-    localStorage.removeItem('user');
+  logout: (): void => {
+    if (typeof window !== 'undefined') {
+      localStorage.removeItem('token');
+    }
   },
 
   // Check if user is authenticated
   isAuthenticated: (): boolean => {
-    return !!localStorage.getItem('token');
+    if (typeof window !== 'undefined') {
+      return !!localStorage.getItem('token');
+    }
+    return false;
   },
 
   // Get current user from localStorage
