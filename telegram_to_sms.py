@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 Telegram to SMS Forwarder
-This script forwards your Telegram messages to SMS using Twilio.
+This script forwards your Telegram messages to SMS using various SMS providers.
 """
 
 import os
@@ -10,10 +10,9 @@ import asyncio
 from datetime import datetime
 from telethon import TelegramClient, events
 from telethon.tl.types import User, Chat, Channel
-from twilio.rest import Client as TwilioClient
-from twilio.base.exceptions import TwilioRestException
 from dotenv import load_dotenv
 import config
+from sms_providers import get_sms_provider
 
 # Configure logging
 logging.basicConfig(
@@ -29,19 +28,13 @@ load_dotenv()
 API_ID = os.getenv('TELEGRAM_API_ID')
 API_HASH = os.getenv('TELEGRAM_API_HASH')
 
-# Twilio credentials
-TWILIO_ACCOUNT_SID = os.getenv('TWILIO_ACCOUNT_SID')
-TWILIO_AUTH_TOKEN = os.getenv('TWILIO_AUTH_TOKEN')
-TWILIO_PHONE_NUMBER = os.getenv('TWILIO_PHONE_NUMBER')
+# Your phone number to receive SMS
 YOUR_PHONE_NUMBER = os.getenv('YOUR_PHONE_NUMBER')
 
 # Check if all required environment variables are set
 required_vars = [
     ('TELEGRAM_API_ID', API_ID),
     ('TELEGRAM_API_HASH', API_HASH),
-    ('TWILIO_ACCOUNT_SID', TWILIO_ACCOUNT_SID),
-    ('TWILIO_AUTH_TOKEN', TWILIO_AUTH_TOKEN),
-    ('TWILIO_PHONE_NUMBER', TWILIO_PHONE_NUMBER),
     ('YOUR_PHONE_NUMBER', YOUR_PHONE_NUMBER)
 ]
 
@@ -54,8 +47,13 @@ if missing_vars:
 # Initialize Telegram client
 client = TelegramClient('telegram_to_sms_session', API_ID, API_HASH)
 
-# Initialize Twilio client
-twilio_client = TwilioClient(TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN)
+# Initialize SMS provider
+try:
+    sms_provider = get_sms_provider()
+    logger.info(f"Using SMS provider: {sms_provider.__class__.__name__}")
+except ValueError as e:
+    logger.error(f"Failed to initialize SMS provider: {e}")
+    exit(1)
 
 async def is_monitored_chat(chat_id):
     """Check if a chat should be monitored based on config."""
@@ -96,22 +94,12 @@ async def is_monitored_chat(chat_id):
     return False
 
 def send_sms(message_text):
-    """Send an SMS using Twilio."""
+    """Send an SMS using the configured provider."""
     # Truncate message if it's too long
     if len(message_text) > config.MAX_SMS_LENGTH:
         message_text = message_text[:config.MAX_SMS_LENGTH - 3] + "..."
     
-    try:
-        message = twilio_client.messages.create(
-            body=message_text,
-            from_=TWILIO_PHONE_NUMBER,
-            to=YOUR_PHONE_NUMBER
-        )
-        logger.info(f"SMS sent successfully: {message.sid}")
-        return True
-    except TwilioRestException as e:
-        logger.error(f"Failed to send SMS: {e}")
-        return False
+    return sms_provider.send_sms(message_text, YOUR_PHONE_NUMBER)
 
 @client.on(events.NewMessage)
 async def handle_new_message(event):
@@ -257,6 +245,18 @@ async def main():
     else:
         logger.error("Failed to get user information. Authentication may have failed.")
         print("\n❌ Authentication may have failed. Please check your credentials and try again.")
+        return
+    
+    # Verify SMS provider credentials
+    print("\n=== SMS PROVIDER VERIFICATION ===")
+    provider_name = sms_provider.__class__.__name__.replace('Provider', '')
+    print(f"Using SMS provider: {provider_name}")
+    
+    if sms_provider.verify_credentials():
+        print(f"✅ {provider_name} credentials verified successfully")
+    else:
+        print(f"❌ {provider_name} credentials verification failed")
+        print("Please check your credentials and try again.")
         return
     
     # Log configuration information
