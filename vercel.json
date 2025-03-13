@@ -15,7 +15,10 @@
   "builds": [
     {
       "src": "dashboard/package.json",
-      "use": "@vercel/next"
+      "use": "@vercel/next",
+      "config": {
+        "nextVersion": "13.4.9"
+      }
     }
   ]
 } 

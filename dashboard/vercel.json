@@ -8,5 +8,16 @@
   ],
   "env": {
     "NEXT_PUBLIC_API_URL": "https://sms-dashboard-one.vercel.app/api"
-  }
+  },
+  "buildCommand": "npm run build",
+  "installCommand": "npm install",
+  "builds": [
+    {
+      "src": "package.json",
+      "use": "@vercel/next",
+      "config": {
+        "nextVersion": "13.4.9"
+      }
+    }
+  ]
 } 
