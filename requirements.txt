@@ -1,4 +1,9 @@
-telethon==1.28.5
-twilio==8.2.0
+flask==2.3.3
+flask-login==0.6.2
+flask-session==0.5.0
 python-dotenv==1.0.0
-requests==2.31.0 
+telethon==1.32.1
+requests==2.31.0
+cryptography==41.0.4
+pytz==2023.3
+gunicorn==21.2.0 
