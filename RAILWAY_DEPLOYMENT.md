@@ -39,7 +39,7 @@ Railway.app is a modern cloud platform that makes it easy to deploy your applica
 2. Click on "New Project"
 3. Select "Deploy from GitHub repo"
 4. Choose your repository from the list
-5. Railway will automatically detect your project configuration
+5. Railway will automatically detect your project configuration using the `railway.json` file and Dockerfile
 6. Click "Deploy"
 
 ### 3. Set up Environment Variables
@@ -52,15 +52,15 @@ Railway.app is a modern cloud platform that makes it easy to deploy your applica
    - `SMSC_PASSWORD` - Your SMSC password
    - Any other environment variables your application needs
 
-### 4. Set up Multiple Services (Web App and Forwarder)
-
-Railway allows you to run multiple services within a single project:
+### 4. Set up the Forwarder Service
 
 1. In your project dashboard, go to the "Services" tab
 2. You should see your main service running the web app
 3. Click "New Service" and select "Deploy from GitHub repo"
 4. Choose the same repository
-5. In the service settings, change the "Start Command" to `python run_forwarder_service.py`
+5. In the service settings:
+   - Change the "Start Command" to `python run_forwarder_service.py`
+   - Or specify the Dockerfile path as `Dockerfile.forwarder`
 6. Make sure to add the same environment variables to this service
 
 ### 5. Set up Persistent Storage
@@ -82,6 +82,20 @@ For your Telegram sessions and database:
 3. Click "Generate Domain" for a railway.app subdomain or "Custom Domain" to use your own domain
 4. Follow the instructions to configure DNS settings if using a custom domain
 
+## Troubleshooting Common Issues
+
+### Issue: "pip: command not found" during build
+
+If you encounter this error, it means the build environment doesn't have Python properly installed. This is why we're using a custom Dockerfile that starts with a Python base image.
+
+### Issue: Services can't access shared data
+
+Make sure both services have the same volumes mounted at the same paths. This ensures they can share data like Telegram sessions and the database.
+
+### Issue: Environment variables not working
+
+Double-check that you've added all required environment variables to both services. Missing environment variables are a common cause of deployment failures.
+
 ## Continuous Deployment
 
 Railway automatically sets up continuous deployment. Any changes pushed to your main branch will trigger a new deployment.
@@ -98,15 +112,6 @@ Railway allows you to scale your application:
 
 1. In your service settings, go to the "Scaling" tab
 2. Adjust the memory and CPU allocation as needed
-
-## Troubleshooting
-
-If you encounter any issues:
-
-1. Check the logs for error messages
-2. Make sure all environment variables are set correctly
-3. Verify that your volumes are mounted correctly
-4. Try redeploying the service
 
 ## Cost Considerations
 
