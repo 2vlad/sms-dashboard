@@ -1,0 +1,112 @@
+{% extends 'base.html' %}
+
+{% block title %}Login - Telegram to SMS Forwarder{% endblock %}
+
+{% block content %}
+<div class="card login-card">
+    <div class="card-header text-center">
+        <i class="fas fa-telegram fa-2x mb-2" style="color: #0088cc;"></i>
+        <h2>Connect with Telegram</h2>
+    </div>
+    <div class="card-body">
+        <div class="login-steps">
+            <div class="step active">
+                <div class="step-number">1</div>
+                <div class="step-content">
+                    <h3>Enter your phone number</h3>
+                    <p>We'll send a verification code to your Telegram app</p>
+                </div>
+            </div>
+            <div class="step">
+                <div class="step-number">2</div>
+                <div class="step-content">
+                    <h3>Enter verification code</h3>
+                    <p>Check your Telegram app for the code</p>
+                </div>
+            </div>
+        </div>
+        
+        <form method="post" action="{{ url_for('login') }}" class="mt-3">
+            <div class="form-group">
+                <label for="phone" class="form-label">Phone Number</label>
+                <div class="phone-input-container">
+                    <input 
+                        type="tel" 
+                        id="phone" 
+                        name="phone" 
+                        placeholder="+79123456789" 
+                        class="form-control"
+                        required
+                        autocomplete="tel"
+                    >
+                </div>
+                <small class="form-text">Include your country code (e.g., +7 for Russia)</small>
+            </div>
+            
+            <button type="submit" class="btn btn-primary btn-block">
+                <i class="fas fa-arrow-right"></i> Continue
+            </button>
+        </form>
+    </div>
+</div>
+{% endblock %}
+
+{% block head %}
+<style>
+    .login-card {
+        max-width: 500px;
+        margin: 2rem auto;
+        box-shadow: var(--shadow-md);
+    }
+    
+    .login-steps {
+        margin: 1rem 0;
+    }
+    
+    .step {
+        display: flex;
+        align-items: flex-start;
+        margin-bottom: 1rem;
+        opacity: 0.5;
+    }
+    
+    .step.active {
+        opacity: 1;
+    }
+    
+    .step-number {
+        width: 30px;
+        height: 30px;
+        border-radius: 50%;
+        background-color: var(--color-accent);
+        color: white;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        margin-right: 1rem;
+        flex-shrink: 0;
+    }
+    
+    .step-content h3 {
+        font-size: 1rem;
+        margin: 0 0 0.25rem 0;
+    }
+    
+    .step-content p {
+        margin: 0;
+        font-size: 0.875rem;
+        color: var(--color-secondary);
+    }
+    
+    .phone-input-container {
+        position: relative;
+    }
+    
+    .form-text {
+        color: var(--color-secondary);
+        display: block;
+        margin-top: 0.25rem;
+        font-size: 0.875rem;
+    }
+</style>
+{% endblock %} 

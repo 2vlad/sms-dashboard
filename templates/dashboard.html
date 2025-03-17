@@ -1,0 +1,627 @@
+{% extends 'base.html' %}
+
+{% block title %}Dashboard - Telegram to SMS Forwarder{% endblock %}
+
+{% block content %}
+<div class="dashboard-container">
+    <!-- Main Control Panel -->
+    <div class="card control-panel">
+        <div class="card-body">
+            <div class="service-toggle">
+                <div class="toggle-label">Forwarding Service</div>
+                <label class="toggle-switch">
+                    <input type="checkbox" id="service-toggle" {% if service_status.status == 'running' %}checked{% endif %}>
+                    <span class="toggle-slider"></span>
+                    <span class="toggle-status">
+                        {% if service_status.status == 'running' %}Active{% else %}Inactive{% endif %}
+                    </span>
+                </label>
+            </div>
+            
+            <div class="usage-meter">
+                <div class="meter-label">
+                    <span>Daily Usage</span>
+                    <span class="meter-value">
+                        {% if limits_info and limits_info.daily_counter is defined %}
+                            {{ limits_info.daily_counter }}
+                        {% else %}
+                            0
+                        {% endif %} / 
+                        {% if limits_info and limits_info.daily_limit is defined %}
+                            {{ limits_info.daily_limit }}
+                        {% else %}
+                            100
+                        {% endif %}
+                    </span>
+                </div>
+                <div class="meter-bar">
+                    <div class="meter-fill" style="width: {% if limits_info and limits_info.daily_counter is defined and limits_info.daily_limit is defined and limits_info.daily_limit > 0 %}{{ (limits_info.daily_counter / limits_info.daily_limit) * 100 }}{% else %}0{% endif %}%"></div>
+                </div>
+            </div>
+            
+            <div class="settings-form">
+                <div class="form-group">
+                    <label for="daily-limit">Daily Message Limit</label>
+                    <div class="input-with-button">
+                        <input type="number" id="daily-limit" class="form-control" 
+                            value="{% if limits_info and limits_info.daily_limit is defined %}{{ limits_info.daily_limit }}{% else %}100{% endif %}" 
+                            min="1" max="1000">
+                        <button id="save-limit" class="btn btn-sm btn-primary">Save</button>
+                    </div>
+                </div>
+                
+                <div class="form-group">
+                    <label for="phone-number">Forward to Phone Number</label>
+                    <div class="input-with-button">
+                        <input type="tel" id="phone-number" class="form-control" 
+                            value="{% if user and user.phone_number %}{{ user.phone_number }}{% endif %}" 
+                            placeholder="+1234567890">
+                        <button id="save-phone" class="btn btn-sm btn-primary">Save</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Recent Messages -->
+    <div class="card messages-card">
+        <div class="card-header">
+            <h3>Recent Messages</h3>
+            <button id="refresh-messages-btn" class="btn btn-sm btn-secondary">
+                <i class="fas fa-sync-alt"></i> Refresh
+            </button>
+        </div>
+        <div class="card-body">
+            <div id="messages-container">
+                {% if messages %}
+                    <div class="messages-list">
+                        {% for message in messages[:10] %}
+                            <div class="message-item">
+                                <div class="message-time">{{ message.timestamp|format_timestamp }}</div>
+                                <div class="message-content">
+                                    <div class="message-sender">{{ message.sender_name }}</div>
+                                    <div class="message-text">{{ message.message_text }}</div>
+                                </div>
+                                <div class="message-status {% if message.forwarded %}status-forwarded{% else %}status-not-forwarded{% endif %}">
+                                    {% if message.forwarded %}Forwarded{% else %}Not Forwarded{% endif %}
+                                </div>
+                            </div>
+                        {% endfor %}
+                    </div>
+                {% else %}
+                    <div class="empty-state">
+                        <i class="fas fa-inbox"></i>
+                        <p>No messages yet</p>
+                        <small>Messages will appear here when received</small>
+                    </div>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block head %}
+<style>
+    .dashboard-container {
+        max-width: 800px;
+        margin: 0 auto;
+        padding: 1rem;
+    }
+    
+    .card {
+        background-color: white;
+        border-radius: 12px;
+        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+        margin-bottom: 1.5rem;
+        overflow: hidden;
+        border: none;
+    }
+    
+    .card-header {
+        padding: 1rem;
+        border-bottom: 1px solid rgba(0, 0, 0, 0.05);
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+    }
+    
+    .card-header h3 {
+        margin: 0;
+        font-size: 1.1rem;
+        font-weight: 600;
+    }
+    
+    .card-body {
+        padding: 1.5rem;
+    }
+    
+    /* Control Panel */
+    .control-panel {
+        background: linear-gradient(to right, var(--color-primary), var(--color-accent));
+        color: white;
+    }
+    
+    .service-toggle {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 1.5rem;
+    }
+    
+    .toggle-label {
+        font-weight: 600;
+        font-size: 1.1rem;
+    }
+    
+    .toggle-switch {
+        position: relative;
+        display: inline-block;
+        width: 60px;
+        height: 30px;
+    }
+    
+    .toggle-switch input {
+        opacity: 0;
+        width: 0;
+        height: 0;
+    }
+    
+    .toggle-slider {
+        position: absolute;
+        cursor: pointer;
+        top: 0;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        background-color: rgba(255, 255, 255, 0.3);
+        transition: .4s;
+        border-radius: 34px;
+    }
+    
+    .toggle-slider:before {
+        position: absolute;
+        content: "";
+        height: 22px;
+        width: 22px;
+        left: 4px;
+        bottom: 4px;
+        background-color: white;
+        transition: .4s;
+        border-radius: 50%;
+    }
+    
+    input:checked + .toggle-slider {
+        background-color: rgba(255, 255, 255, 0.8);
+    }
+    
+    input:checked + .toggle-slider:before {
+        transform: translateX(30px);
+    }
+    
+    .toggle-status {
+        position: absolute;
+        right: -70px;
+        top: 5px;
+        font-size: 0.9rem;
+        font-weight: 500;
+    }
+    
+    /* Usage Meter */
+    .usage-meter {
+        margin-bottom: 1.5rem;
+    }
+    
+    .meter-label {
+        display: flex;
+        justify-content: space-between;
+        margin-bottom: 0.5rem;
+        font-size: 0.9rem;
+    }
+    
+    .meter-value {
+        font-weight: 600;
+    }
+    
+    .meter-bar {
+        height: 8px;
+        background-color: rgba(255, 255, 255, 0.3);
+        border-radius: 4px;
+        overflow: hidden;
+    }
+    
+    .meter-fill {
+        height: 100%;
+        background-color: rgba(255, 255, 255, 0.8);
+        border-radius: 4px;
+        transition: width 0.5s ease;
+    }
+    
+    /* Settings Form */
+    .settings-form {
+        background-color: white;
+        border-radius: 8px;
+        padding: 1.2rem;
+        color: var(--color-primary);
+    }
+    
+    .form-group {
+        margin-bottom: 1rem;
+    }
+    
+    .form-group:last-child {
+        margin-bottom: 0;
+    }
+    
+    .form-group label {
+        display: block;
+        margin-bottom: 0.5rem;
+        font-size: 0.9rem;
+        font-weight: 500;
+    }
+    
+    .input-with-button {
+        display: flex;
+        gap: 0.5rem;
+    }
+    
+    .input-with-button .form-control {
+        flex: 1;
+    }
+    
+    /* Messages List */
+    .messages-list {
+        display: flex;
+        flex-direction: column;
+        gap: 0.75rem;
+    }
+    
+    .message-item {
+        display: grid;
+        grid-template-columns: 80px 1fr 100px;
+        gap: 1rem;
+        padding: 0.75rem;
+        border-radius: 8px;
+        background-color: var(--color-light);
+        transition: all 0.2s ease;
+    }
+    
+    .message-item:hover {
+        box-shadow: 0 2px 5px rgba(0, 0, 0, 0.05);
+        transform: translateY(-2px);
+    }
+    
+    .message-time {
+        font-size: 0.8rem;
+        color: var(--color-secondary);
+        align-self: center;
+    }
+    
+    .message-content {
+        overflow: hidden;
+    }
+    
+    .message-sender {
+        font-weight: 600;
+        font-size: 0.9rem;
+        margin-bottom: 0.25rem;
+    }
+    
+    .message-text {
+        font-size: 0.9rem;
+        color: var(--color-primary);
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+    }
+    
+    .message-status {
+        font-size: 0.8rem;
+        padding: 0.25rem 0.5rem;
+        border-radius: 4px;
+        text-align: center;
+        align-self: center;
+        font-weight: 500;
+    }
+    
+    .status-forwarded {
+        background-color: var(--color-success-light);
+        color: var(--color-success);
+    }
+    
+    .status-not-forwarded {
+        background-color: var(--color-error-light);
+        color: var(--color-error);
+    }
+    
+    /* Empty State */
+    .empty-state {
+        text-align: center;
+        padding: 2rem 1rem;
+        color: var(--color-secondary);
+    }
+    
+    .empty-state i {
+        font-size: 2rem;
+        margin-bottom: 0.5rem;
+        opacity: 0.5;
+    }
+    
+    .empty-state p {
+        font-size: 1rem;
+        margin-bottom: 0.25rem;
+        color: var(--color-primary);
+    }
+    
+    .empty-state small {
+        font-size: 0.8rem;
+    }
+    
+    @media (max-width: 768px) {
+        .message-item {
+            grid-template-columns: 1fr;
+            gap: 0.5rem;
+        }
+        
+        .message-time {
+            font-size: 0.7rem;
+            text-align: left;
+        }
+        
+        .message-status {
+            justify-self: start;
+        }
+    }
+</style>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    document.addEventListener('DOMContentLoaded', function() {
+        // Service toggle functionality
+        const serviceToggle = document.getElementById('service-toggle');
+        const toggleStatus = document.querySelector('.toggle-status');
+        
+        if (serviceToggle) {
+            serviceToggle.addEventListener('change', function() {
+                const isActive = this.checked;
+                
+                // Disable toggle while processing
+                serviceToggle.disabled = true;
+                
+                // Call the appropriate endpoint
+                fetch(isActive ? '{{ url_for("start_forwarder") }}' : '{{ url_for("stop_forwarder") }}', {
+                    method: 'GET',
+                    headers: {
+                        'X-Requested-With': 'XMLHttpRequest'
+                    }
+                })
+                .then(response => {
+                    console.log('Service toggle response status:', response.status);
+                    if (!response.ok) {
+                        console.error('Service toggle response not OK:', response.status, response.statusText);
+                        return response.json().then(data => {
+                            console.error('Service toggle error response body:', data);
+                            throw new Error(data.message || `Server returned ${response.status}`);
+                        }).catch(error => {
+                            // If we can't parse the response as JSON, just throw the original error
+                            throw new Error(`Server returned ${response.status}: ${response.statusText}`);
+                        });
+                    }
+                    return response.json();
+                })
+                .then(data => {
+                    console.log('Service toggle response data:', data);
+                    if (data.success) {
+                        toggleStatus.textContent = isActive ? 'Active' : 'Inactive';
+                    } else {
+                        // Revert toggle if there was an error
+                        serviceToggle.checked = !isActive;
+                        toggleStatus.textContent = !isActive ? 'Active' : 'Inactive';
+                        alert(data.message || 'Failed to change service status');
+                    }
+                })
+                .catch(error => {
+                    console.error('Error changing service status:', error);
+                    // Revert toggle on error
+                    serviceToggle.checked = !isActive;
+                    toggleStatus.textContent = !isActive ? 'Active' : 'Inactive';
+                    alert('Failed to change service status. Please try again.');
+                })
+                .finally(() => {
+                    // Re-enable toggle
+                    serviceToggle.disabled = false;
+                });
+            });
+        }
+        
+        // Save daily limit
+        const saveLimitBtn = document.getElementById('save-limit');
+        const dailyLimitInput = document.getElementById('daily-limit');
+        
+        if (saveLimitBtn && dailyLimitInput) {
+            saveLimitBtn.addEventListener('click', function() {
+                const limit = parseInt(dailyLimitInput.value);
+                if (isNaN(limit) || limit < 1) {
+                    alert('Please enter a valid number greater than 0');
+                    return;
+                }
+                
+                // Disable button while saving
+                saveLimitBtn.disabled = true;
+                saveLimitBtn.textContent = 'Saving...';
+                
+                fetch('/update_daily_limit', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-Requested-With': 'XMLHttpRequest'
+                    },
+                    body: JSON.stringify({ daily_limit: limit })
+                })
+                .then(response => {
+                    console.log('Response status:', response.status);
+                    if (!response.ok) {
+                        console.error('Response not OK:', response.status, response.statusText);
+                        return response.json().then(data => {
+                            console.error('Error response body:', data);
+                            // Handle authentication errors
+                            if (response.status === 401 && data.redirect) {
+                                alert('Your session has expired. Please log in again.');
+                                window.location.href = data.redirect;
+                                return;
+                            }
+                            throw new Error(data.message || `Server returned ${response.status}`);
+                        }).catch(error => {
+                            // If we can't parse the response as JSON, just throw the original error
+                            throw new Error(`Server returned ${response.status}: ${response.statusText}`);
+                        });
+                    }
+                    return response.json();
+                })
+                .then(data => {
+                    console.log('Response data:', data);
+                    if (data.success) {
+                        // Update UI
+                        const meterValue = document.querySelector('.meter-value');
+                        if (meterValue) {
+                            const dailyCounter = data.daily_counter || 0;
+                            meterValue.textContent = `${dailyCounter} / ${limit}`;
+                        }
+                        
+                        // Update meter fill
+                        const meterFill = document.querySelector('.meter-fill');
+                        if (meterFill) {
+                            const dailyCounter = data.daily_counter || 0;
+                            const percentage = limit > 0 ? (dailyCounter / limit) * 100 : 0;
+                            meterFill.style.width = `${percentage}%`;
+                        }
+                    } else {
+                        console.error('Server reported error:', data.message);
+                        alert(data.message || 'Failed to update daily limit');
+                    }
+                })
+                .catch(error => {
+                    console.error('Error updating daily limit:', error);
+                    alert('Failed to update daily limit. Please try again.');
+                })
+                .finally(() => {
+                    // Re-enable button
+                    saveLimitBtn.disabled = false;
+                    saveLimitBtn.textContent = 'Save';
+                });
+            });
+        }
+        
+        // Save phone number
+        const savePhoneBtn = document.getElementById('save-phone');
+        const phoneInput = document.getElementById('phone-number');
+        
+        if (savePhoneBtn && phoneInput) {
+            savePhoneBtn.addEventListener('click', function() {
+                const phone = phoneInput.value.trim();
+                if (!phone) {
+                    alert('Please enter a valid phone number');
+                    return;
+                }
+                
+                // Disable button while saving
+                savePhoneBtn.disabled = true;
+                savePhoneBtn.textContent = 'Saving...';
+                
+                fetch('/update_phone_number', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-Requested-With': 'XMLHttpRequest'
+                    },
+                    body: JSON.stringify({ phone_number: phone })
+                })
+                .then(response => response.json())
+                .then(data => {
+                    if (data.success) {
+                        alert('Phone number updated successfully');
+                    } else {
+                        alert(data.message || 'Failed to update phone number');
+                    }
+                })
+                .catch(error => {
+                    console.error('Error updating phone number:', error);
+                    alert('Failed to update phone number. Please try again.');
+                })
+                .finally(() => {
+                    // Re-enable button
+                    savePhoneBtn.disabled = false;
+                    savePhoneBtn.textContent = 'Save';
+                });
+            });
+        }
+        
+        // Refresh messages
+        const refreshBtn = document.getElementById('refresh-messages-btn');
+        const messagesContainer = document.getElementById('messages-container');
+        
+        if (refreshBtn && messagesContainer) {
+            refreshBtn.addEventListener('click', function() {
+                // Disable button while refreshing
+                refreshBtn.disabled = true;
+                refreshBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Refreshing...';
+                
+                fetch('/refresh_telegram_messages')
+                    .then(response => response.json())
+                    .then(data => {
+                        if (data.success && data.messages && data.messages.length > 0) {
+                            // Create messages list
+                            let messagesHtml = '<div class="messages-list">';
+                            
+                            // Only show the last 10 messages
+                            const recentMessages = data.messages.slice(0, 10);
+                            
+                            recentMessages.forEach(message => {
+                                messagesHtml += `
+                                    <div class="message-item">
+                                        <div class="message-time">${message.timestamp_formatted}</div>
+                                        <div class="message-content">
+                                            <div class="message-sender">${message.sender_name}</div>
+                                            <div class="message-text">${message.message_text}</div>
+                                        </div>
+                                        <div class="message-status ${message.forwarded ? 'status-forwarded' : 'status-not-forwarded'}">
+                                            ${message.forwarded ? 'Forwarded' : 'Not Forwarded'}
+                                        </div>
+                                    </div>
+                                `;
+                            });
+                            
+                            messagesHtml += '</div>';
+                            messagesContainer.innerHTML = messagesHtml;
+                        } else {
+                            // Show empty state
+                            messagesContainer.innerHTML = `
+                                <div class="empty-state">
+                                    <i class="fas fa-inbox"></i>
+                                    <p>No messages yet</p>
+                                    <small>Messages will appear here when received</small>
+                                </div>
+                            `;
+                        }
+                    })
+                    .catch(error => {
+                        console.error('Error refreshing messages:', error);
+                        messagesContainer.innerHTML = `
+                            <div class="empty-state">
+                                <i class="fas fa-exclamation-circle"></i>
+                                <p>Error refreshing messages</p>
+                                <small>Please try again later</small>
+                            </div>
+                        `;
+                    })
+                    .finally(() => {
+                        // Re-enable button
+                        refreshBtn.disabled = false;
+                        refreshBtn.innerHTML = '<i class="fas fa-sync-alt"></i> Refresh';
+                    });
+            });
+        }
+    });
+</script>
+{% endblock %} 

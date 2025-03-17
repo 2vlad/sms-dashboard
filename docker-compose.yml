@@ -1,0 +1,26 @@
+version: '3'
+
+services:
+  web:
+    build: .
+    ports:
+      - "5001:5001"
+    volumes:
+      - ./data:/app/data
+      - ./telegram_sessions:/app/telegram_sessions
+      - ./flask_sessions:/app/flask_sessions
+    env_file:
+      - .env
+    restart: always
+
+  forwarder:
+    build: .
+    command: python debug_forwarder.py
+    volumes:
+      - ./data:/app/data
+      - ./telegram_sessions:/app/telegram_sessions
+    env_file:
+      - .env
+    restart: always
+    depends_on:
+      - web 

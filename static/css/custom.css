@@ -1,0 +1,138 @@
+/* Custom CSS for Telegram to SMS Forwarder */
+
+body {
+    background-color: #f8f9fa;
+    padding-top: 20px;
+    padding-bottom: 40px;
+}
+
+.navbar {
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+    margin-bottom: 20px;
+}
+
+.navbar-brand {
+    font-weight: bold;
+}
+
+.card {
+    box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+    margin-bottom: 20px;
+    border-radius: 8px;
+    overflow: hidden;
+}
+
+.card-header {
+    font-weight: bold;
+}
+
+.status-indicator {
+    width: 15px;
+    height: 15px;
+    border-radius: 50%;
+    display: inline-block;
+    margin-right: 5px;
+}
+
+.status-running {
+    background-color: #28a745;
+}
+
+.status-error {
+    background-color: #dc3545;
+}
+
+.status-unknown {
+    background-color: #6c757d;
+}
+
+.message-item {
+    border-left: 4px solid #007bff;
+    padding-left: 10px;
+    margin-bottom: 15px;
+    transition: all 0.3s ease;
+}
+
+.message-item:hover {
+    background-color: #f8f9fa;
+    transform: translateX(5px);
+}
+
+.message-meta {
+    font-size: 0.85rem;
+    color: #6c757d;
+}
+
+.message-content {
+    margin-top: 5px;
+}
+
+.message-status {
+    font-size: 0.8rem;
+    font-style: italic;
+}
+
+.stats-card {
+    text-align: center;
+    padding: 15px;
+    border-radius: 8px;
+    margin-bottom: 15px;
+    color: white;
+}
+
+.stats-today {
+    background: linear-gradient(135deg, #007bff, #0056b3);
+}
+
+.stats-week {
+    background: linear-gradient(135deg, #6610f2, #3d0a91);
+}
+
+.stats-month {
+    background: linear-gradient(135deg, #17a2b8, #0f6674);
+}
+
+.stats-number {
+    font-size: 2rem;
+    font-weight: bold;
+}
+
+.stats-label {
+    font-size: 0.9rem;
+    text-transform: uppercase;
+}
+
+.welcome-section {
+    background-color: #e9ecef;
+    padding: 20px;
+    border-radius: 8px;
+    margin-bottom: 20px;
+}
+
+.footer {
+    margin-top: 30px;
+    padding-top: 20px;
+    border-top: 1px solid #dee2e6;
+    color: #6c757d;
+}
+
+/* Animations */
+.fade-in {
+    animation: fadeIn 0.5s;
+}
+
+@keyframes fadeIn {
+    from { opacity: 0; }
+    to { opacity: 1; }
+}
+
+/* Responsive adjustments */
+@media (max-width: 768px) {
+    .stats-number {
+        font-size: 1.5rem;
+    }
+    
+    .card-body {
+        padding: 1rem;
+    }
+} 

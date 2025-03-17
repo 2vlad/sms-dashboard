@@ -1,0 +1,100 @@
+{% extends 'base.html' %}
+
+{% block title %}Settings{% endblock %}
+
+{% block content %}
+<div class="container">
+    <h1>Settings</h1>
+    
+    <div class="card">
+        <div class="card-body">
+            <form method="post">
+                <h3>Message Forwarding Settings</h3>
+                <div class="form-group form-check">
+                    <input type="checkbox" class="form-check-input" id="forward_all_chats" name="forward_all_chats" {% if settings.forward_all_chats %}checked{% endif %}>
+                    <label class="form-check-label" for="forward_all_chats">Forward messages from all chats</label>
+                    <small class="form-text text-muted">If enabled, messages from all chats will be forwarded. This can be overridden by the "Only non-muted chats" setting.</small>
+                </div>
+                
+                <div class="form-group form-check">
+                    <input type="checkbox" class="form-check-input" id="only_non_muted_chats" name="only_non_muted_chats" {% if settings.only_non_muted_chats %}checked{% endif %}>
+                    <label class="form-check-label" for="only_non_muted_chats">Only forward messages from non-muted chats</label>
+                    <small class="form-text text-muted">If enabled, only messages from non-muted chats will be forwarded. This overrides the "Forward all chats" setting.</small>
+                </div>
+                
+                <div class="form-group form-check">
+                    <input type="checkbox" class="form-check-input" id="forward_media" name="forward_media" {% if settings.forward_media %}checked{% endif %}>
+                    <label class="form-check-label" for="forward_media">Forward media messages</label>
+                    <small class="form-text text-muted">If enabled, media messages (photos, videos, etc.) will be forwarded as text notifications.</small>
+                </div>
+                
+                <div class="form-group form-check">
+                    <input type="checkbox" class="form-check-input" id="forward_own_messages" name="forward_own_messages" {% if settings.forward_own_messages %}checked{% endif %}>
+                    <label class="form-check-label" for="forward_own_messages">Forward your own messages</label>
+                    <small class="form-text text-muted">If enabled, messages you send will also be forwarded to your phone.</small>
+                </div>
+                
+                <div class="form-group">
+                    <label for="max_sms_length">Maximum SMS length</label>
+                    <input type="number" class="form-control" id="max_sms_length" name="max_sms_length" value="{{ settings.max_sms_length }}" min="50" max="1000">
+                    <small class="form-text text-muted">Maximum length of SMS messages. Messages longer than this will be truncated.</small>
+                </div>
+                
+                <h3>Rate Limiting Settings</h3>
+                <div class="alert alert-warning">
+                    <strong>Important:</strong> Rate limiting helps prevent excessive SMS sending and protects your SMS balance. 
+                    Adjust these settings carefully.
+                </div>
+                
+                <div class="form-group">
+                    <label for="max_messages">Maximum messages per time window</label>
+                    <input type="number" class="form-control" id="max_messages" name="max_messages" value="{{ settings.max_messages }}" min="1" max="100">
+                    <small class="form-text text-muted">Maximum number of messages that can be sent in the time window.</small>
+                </div>
+                
+                <div class="form-group">
+                    <label for="time_window">Global time window (seconds)</label>
+                    <input type="number" class="form-control" id="time_window" name="time_window" value="{{ settings.time_window }}" min="300" max="86400">
+                    <small class="form-text text-muted">Time window in seconds for the global rate limit (3600 = 1 hour).</small>
+                </div>
+                
+                <div class="form-group">
+                    <label for="max_per_chat">Maximum messages per chat</label>
+                    <input type="number" class="form-control" id="max_per_chat" name="max_per_chat" value="{{ settings.max_per_chat }}" min="1" max="50">
+                    <small class="form-text text-muted">Maximum number of messages that can be sent from a single chat in the chat time window.</small>
+                </div>
+                
+                <div class="form-group">
+                    <label for="chat_window">Chat time window (seconds)</label>
+                    <input type="number" class="form-control" id="chat_window" name="chat_window" value="{{ settings.chat_window }}" min="300" max="86400">
+                    <small class="form-text text-muted">Time window in seconds for the per-chat rate limit (3600 = 1 hour).</small>
+                </div>
+                
+                <div class="form-group">
+                    <label for="daily_limit">Daily message limit</label>
+                    <input type="number" class="form-control" id="daily_limit" name="daily_limit" value="{{ settings.daily_limit }}" min="1" max="200">
+                    <small class="form-text text-muted">Maximum number of messages that can be sent in a 24-hour period. This is a hard limit to protect your SMS balance.</small>
+                </div>
+                
+                <div class="alert alert-info">
+                    <h5>Current Usage</h5>
+                    <p><strong>Global:</strong> {{ limits_info.global_usage }} messages</p>
+                    <p><strong>Daily:</strong> {{ limits_info.daily_usage }} messages</p>
+                    <p><strong>Time until daily reset:</strong> {{ limits_info.time_until_reset }}</p>
+                    
+                    {% if limits_info.chat_usage %}
+                    <h6>Per-Chat Usage:</h6>
+                    <ul>
+                        {% for chat_id, usage in limits_info.chat_usage.items() %}
+                        <li>Chat {{ chat_id }}: {{ usage }} messages</li>
+                        {% endfor %}
+                    </ul>
+                    {% endif %}
+                </div>
+                
+                <button type="submit" class="btn btn-primary">Save Settings</button>
+            </form>
+        </div>
+    </div>
+</div>
+{% endblock %} 

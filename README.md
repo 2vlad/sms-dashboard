@@ -92,174 +92,66 @@ MIT
 
 # Telegram to SMS Forwarder
 
-This application forwards your Telegram messages to SMS, allowing you to receive notifications even when you don't have internet access.
+A service that forwards your Telegram messages to SMS, allowing you to stay connected even when you don't have internet access.
 
-## Features
+## 🚨 Important Safety Features 🚨
 
-- Forward messages from all chats or only selected ones
-- Forward messages from non-muted chats only
-- Include sender name in SMS
-- Forward media messages (as text notifications)
-- Multiple SMS provider options (SMSC.ru, MessageBird, Vonage, Twilio)
-- Customizable message format
+To prevent excessive SMS sending and protect your SMS balance, this application includes several safety features:
 
-## Prerequisites
+1. **Muted Chat Filtering**: By default, messages from muted chats are not forwarded. This prevents unwanted messages from draining your SMS balance.
 
-- Python 3.6 or higher
-- A Telegram account
-- API credentials from Telegram
-- An account with one of the supported SMS providers
+2. **Rate Limiting**: The application includes a rate limiter that restricts the number of SMS messages that can be sent in a given time period:
+   - Global limit: 10 messages per hour by default
+   - Per-chat limit: 3 messages per hour from any single chat by default
+   - These limits can be adjusted in the Settings page
 
-## Installation
+3. **Configurable Forwarding**: You can configure which types of messages are forwarded:
+   - Option to only forward messages from non-muted chats
+   - Option to include or exclude media messages
+   - Option to include or exclude your own messages
 
-1. Clone this repository:
+## Setup
+
+1. Clone this repository
+2. Install the required packages: `pip install -r requirements.txt`
+3. Create a `.env` file with your Telegram API credentials:
    ```
-   git clone https://github.com/yourusername/telegram-to-sms-forwarder.git
-   cd telegram-to-sms-forwarder
+   TELEGRAM_API_ID=your_api_id
+   TELEGRAM_API_HASH=your_api_hash
+   SMSC_LOGIN=your_smsc_login
+   SMSC_PASSWORD=your_smsc_password
    ```
-
-2. Install the required packages:
-   ```
-   pip install -r requirements.txt
-   ```
-
-3. Copy the example environment file and edit it with your credentials:
-   ```
-   cp .env.example .env
-   nano .env
-   ```
-
-## SMS Provider Options
-
-This application supports multiple SMS providers to give you flexibility and cost-effectiveness. Choose the one that works best for your needs:
-
-### 1. SMSC.ru (Recommended for Russian numbers)
-
-SMSC.ru is a Russian SMS provider with good rates for Russian phone numbers. To use SMSC.ru:
-
-1. Sign up at [https://smsc.ru/](https://smsc.ru/)
-2. Get your login and password
-3. Add the following to your `.env` file:
-   ```
-   SMS_PROVIDER=smsc
-   SMSC_LOGIN=your_login
-   SMSC_PASSWORD=your_password
-   SMSC_SENDER=SMS  # Optional: your sender ID
-   ```
-
-### 2. MessageBird
-
-MessageBird is a global provider with competitive rates. To use MessageBird:
-
-1. Sign up at [https://www.messagebird.com/](https://www.messagebird.com/)
-2. Get your API key
-3. Add the following to your `.env` file:
-   ```
-   SMS_PROVIDER=messagebird
-   MESSAGEBIRD_API_KEY=your_api_key
-   MESSAGEBIRD_ORIGINATOR=SMS  # Optional: your sender ID or phone number
-   ```
-
-### 3. Vonage (formerly Nexmo)
-
-Vonage is a global provider with good coverage. To use Vonage:
-
-1. Sign up at [https://www.vonage.com/](https://www.vonage.com/)
-2. Get your API key and secret
-3. Add the following to your `.env` file:
-   ```
-   SMS_PROVIDER=vonage
-   VONAGE_API_KEY=your_api_key
-   VONAGE_API_SECRET=your_api_secret
-   VONAGE_FROM_NUMBER=SMS  # Optional: your sender ID or phone number
-   ```
-
-### 4. Twilio
-
-Twilio is a popular global provider but can be expensive for international SMS. To use Twilio:
-
-1. Sign up at [https://www.twilio.com/](https://www.twilio.com/)
-2. Get your Account SID, Auth Token, and a Twilio phone number
-3. Add the following to your `.env` file:
-   ```
-   SMS_PROVIDER=twilio
-   TWILIO_ACCOUNT_SID=your_account_sid
-   TWILIO_AUTH_TOKEN=your_auth_token
-   TWILIO_PHONE_NUMBER=your_twilio_phone_number
-   ```
-
-## Verifying SMS Provider
-
-You can verify your SMS provider credentials and send a test message using the verification script:
-
-```
-python verify_sms_provider.py
-```
-
-To get setup instructions for a specific provider:
-
-```
-python verify_sms_provider.py --setup smsc
-```
-
-To list all available providers:
-
-```
-python verify_sms_provider.py --list
-```
-
-To verify a specific provider:
-
-```
-python verify_sms_provider.py --provider smsc
-```
-
-## Configuration
-
-Edit the `config.py` file to customize the behavior of the forwarder:
-
-- `FORWARD_ALL_CHATS`: Set to `True` to forward messages from all chats
-- `ONLY_NON_MUTED_CHATS`: Set to `True` to only forward messages from non-muted chats
-- `MONITORED_CHATS`: List of chat usernames or IDs to monitor (if `FORWARD_ALL_CHATS` is `False`)
-- `INCLUDE_SENDER_NAME`: Set to `True` to include the sender's name in the SMS
-- `MAX_SMS_LENGTH`: Maximum SMS length (messages longer than this will be truncated)
-- `FORWARD_MEDIA`: Set to `True` to forward media messages (as text notification)
-- `FORWARD_OWN_MESSAGES`: Set to `True` to forward your own messages
-- `DEBUG`: Set to `True` for more detailed logging
+4. Run the web application: `python web_app.py`
+5. Open the web interface at http://127.0.0.1:5001
+6. Log in with your Telegram account
+7. Set your phone number in the Settings page
+8. Start the forwarder from the Dashboard
 
 ## Usage
 
-1. First, verify your Telegram account:
-   ```
-   python verify_account.py
-   ```
+1. **Dashboard**: View the status of the forwarder and recent messages
+2. **Settings**: Configure the forwarder settings, including:
+   - Forwarding options (all chats, non-muted chats, media messages, own messages)
+   - Rate limiting settings (maximum messages per hour, per chat)
+   - SMS settings (maximum SMS length)
+3. **Start/Stop Forwarding**: Use the buttons on the Dashboard to start or stop the forwarder
 
-2. Test the SMS sending functionality:
-   ```
-   python test_sms.py
-   ```
+## Troubleshooting
 
-3. Run the forwarder:
-   ```
-   python run_forwarder.py
-   ```
+If you encounter issues with the forwarder:
 
-The script will authenticate with Telegram (if not already authenticated) and start forwarding messages to your phone via SMS.
+1. Check the logs in `app.log` and `debug_output.txt`
+2. Verify your SMS provider credentials
+3. Make sure your Telegram session is valid
+4. Check the rate limiting settings if messages are not being forwarded
 
-## Running in the Background
+## Deployment
 
-To run the forwarder in the background, you can use tools like `screen`, `tmux`, or create a systemd service.
-
-Example using `screen`:
-```
-screen -S telegram-sms
-python run_forwarder.py
-```
-Press `Ctrl+A` followed by `D` to detach from the screen.
+For deployment instructions, see [DEPLOYMENT.md](DEPLOYMENT.md).
 
 ## License
 
-This project is licensed under the MIT License - see the LICENSE file for details.
+This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
 
 ## Acknowledgments
 

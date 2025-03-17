@@ -2,7 +2,7 @@
 
 # Set to True to forward messages from all chats
 # Note: If ONLY_NON_MUTED_CHATS is True, this will only apply to non-muted chats
-FORWARD_ALL_CHATS = True
+FORWARD_ALL_CHATS = False
 
 # Set to True to only forward messages from non-muted chats
 # This will filter out muted chats even if FORWARD_ALL_CHATS is True

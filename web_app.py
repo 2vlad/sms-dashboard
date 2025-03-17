@@ -769,21 +769,21 @@ def stop_forwarder_process(user_id):
 def update_service_status(user_id, status, error_message=None, pid=None):
     """Update the service status for a user."""
     conn = get_db_connection()
-    service = conn.execute('SELECT * FROM service_status WHERE user_id = ?', (user_id,)).fetchone()
     
-    if service:
-        # Convert to dictionary if it's a sqlite3.Row object
-        service_dict = dict(service) if service else {}
-        
-        # Check if pid is None and service has a pid
-        if pid is None and service_dict.get('pid') is not None:
-            pid = service_dict['pid']
-        
+    # Check if there's an existing status for this user
+    existing = conn.execute(
+        'SELECT id FROM service_status WHERE user_id = ?',
+        (user_id,)
+    ).fetchone()
+    
+    if existing:
+        # Update existing status
         conn.execute(
             'UPDATE service_status SET status = ?, last_check = ?, error_message = ?, pid = ? WHERE user_id = ?',
             (status, int(time.time()), error_message, pid, user_id)
         )
     else:
+        # Insert new status
         conn.execute(
             'INSERT INTO service_status (user_id, status, last_check, error_message, pid) VALUES (?, ?, ?, ?, ?)',
             (user_id, status, int(time.time()), error_message, pid)
@@ -815,6 +815,13 @@ def login_required(f):
     @wraps(f)
     def decorated_function(*args, **kwargs):
         if 'user' not in session:
+            # For AJAX requests, return a JSON response instead of redirecting
+            if request.headers.get('X-Requested-With') == 'XMLHttpRequest':
+                return jsonify({
+                    'success': False,
+                    'message': 'Authentication required',
+                    'redirect': url_for('login')
+                }), 401
             return redirect(url_for('login'))
         return f(*args, **kwargs)
     return decorated_function
@@ -936,7 +943,7 @@ def index():
     """Home page."""
     if 'user' in session:
         return redirect(url_for('dashboard'))
-    return render_template('index.html')
+    return redirect(url_for('login'))
 
 @app.route('/login', methods=['GET', 'POST'])
 def login():
@@ -1265,22 +1272,34 @@ def start_forwarder():
             logger.info(f"Using first user from database: {user_id} with phone {phone_number}")
         else:
             logger.error("No user found in database")
+            if request.headers.get('X-Requested-With') == 'XMLHttpRequest':
+                return jsonify({'success': False, 'message': 'No user found. Please login again.'})
             flash('No user found. Please login again.', 'error')
             return redirect(url_for('login'))
     
     if not phone_number:
         logger.error(f"No phone number found for user {user_id}")
+        if request.headers.get('X-Requested-With') == 'XMLHttpRequest':
+            return jsonify({'success': False, 'message': 'Please set your phone number in settings first'})
         flash('Please set your phone number in settings first', 'error')
         return redirect(url_for('settings'))
     
     # Start the forwarder
     logger.info(f"Starting forwarder for user {user_id} with phone {phone_number}")
-    if start_forwarder_process(user_id, phone_number):
+    success = start_forwarder_process(user_id, phone_number)
+    
+    if success:
         logger.info(f"Forwarder started successfully for user {user_id}")
-        flash('Forwarder service started successfully', 'success')
+        message = 'Forwarder service started successfully'
+        if request.headers.get('X-Requested-With') == 'XMLHttpRequest':
+            return jsonify({'success': True, 'message': message})
+        flash(message, 'success')
     else:
         logger.error(f"Failed to start forwarder for user {user_id}")
-        flash('Failed to start forwarder service', 'error')
+        message = 'Failed to start forwarder service'
+        if request.headers.get('X-Requested-With') == 'XMLHttpRequest':
+            return jsonify({'success': False, 'message': message})
+        flash(message, 'error')
     
     return redirect(url_for('dashboard'))
 
@@ -1292,17 +1311,27 @@ def stop_forwarder():
     
     if not user_id:
         logger.error("No user ID found in session")
+        if request.headers.get('X-Requested-With') == 'XMLHttpRequest':
+            return jsonify({'success': False, 'message': 'No user found. Please login again.'})
         flash('No user found. Please login again.', 'error')
         return redirect(url_for('login'))
     
     # Stop the forwarder
     logger.info(f"Stopping forwarder for user {user_id}")
-    if stop_forwarder_process(user_id):
+    success = stop_forwarder_process(user_id)
+    
+    if success:
         logger.info(f"Forwarder stopped successfully for user {user_id}")
-        flash('Forwarder service stopped successfully', 'success')
+        message = 'Forwarder service stopped successfully'
+        if request.headers.get('X-Requested-With') == 'XMLHttpRequest':
+            return jsonify({'success': True, 'message': message})
+        flash(message, 'success')
     else:
         logger.error(f"Failed to stop forwarder for user {user_id}")
-        flash('Failed to stop forwarder service', 'error')
+        message = 'Failed to stop forwarder service'
+        if request.headers.get('X-Requested-With') == 'XMLHttpRequest':
+            return jsonify({'success': False, 'message': message})
+        flash(message, 'error')
     
     return redirect(url_for('dashboard'))
 
@@ -1310,7 +1339,7 @@ def stop_forwarder():
 def logout():
     """Logout."""
     session.clear()
-    return redirect(url_for('index'))
+    return redirect(url_for('login'))
 
 @app.route('/refresh_telegram_messages')
 @login_required
@@ -1924,7 +1953,79 @@ def download_all_messages():
         flash('Error downloading messages. Please try again.', 'error')
         return redirect(url_for('dashboard'))
 
+@app.route('/update_daily_limit', methods=['POST'])
+@login_required
+def update_daily_limit():
+    """Update the daily message limit."""
+    try:
+        # Log the incoming request for debugging
+        app.logger.info(f"Received request to update daily limit: {request.data}")
+        app.logger.info(f"Request headers: {request.headers}")
+        app.logger.info(f"Request content type: {request.content_type}")
+        app.logger.info(f"Request is JSON: {request.is_json}")
+        
+        # Check if the request has JSON data
+        if not request.is_json:
+            app.logger.error(f"Invalid content type: {request.content_type}. Expected application/json")
+            return jsonify({'success': False, 'message': 'Invalid content type. Expected application/json'})
+        
+        # Get the daily limit from the request
+        data = request.get_json()
+        app.logger.info(f"Parsed JSON data: {data}")
+        
+        if not data or 'daily_limit' not in data:
+            app.logger.error("Invalid request data for daily limit update: missing daily_limit field")
+            return jsonify({'success': False, 'message': 'Invalid request data: missing daily_limit field'})
+        
+        try:
+            daily_limit = int(data['daily_limit'])
+        except (ValueError, TypeError) as e:
+            app.logger.error(f"Invalid daily limit value: {data['daily_limit']} - {str(e)}")
+            return jsonify({'success': False, 'message': f'Invalid daily limit value: {data["daily_limit"]} - must be a number'})
+        
+        if daily_limit < 1:
+            app.logger.error(f"Invalid daily limit value: {daily_limit} - must be greater than 0")
+            return jsonify({'success': False, 'message': 'Daily limit must be greater than 0'})
+        
+        # Update the rate limiter
+        app.logger.info(f"Updating rate limiter daily limit from {rate_limiter.daily_limit} to {daily_limit}")
+        rate_limiter.daily_limit = daily_limit
+        
+        # Save the rate limiter state
+        app.logger.info("Saving rate limiter state")
+        rate_limiter.save_state()
+        
+        # Get current daily usage
+        daily_usage = rate_limiter.get_daily_usage()
+        app.logger.info(f"Current daily usage: {daily_usage}")
+        
+        app.logger.info(f"Daily limit updated to {daily_limit}")
+        return jsonify({
+            'success': True, 
+            'message': 'Daily limit updated successfully',
+            'daily_limit': daily_limit,
+            'daily_counter': daily_usage
+        })
+    except Exception as e:
+        app.logger.error(f"Error updating daily limit: {str(e)}", exc_info=True)
+        return jsonify({'success': False, 'message': f'Error updating daily limit: {str(e)}'})
+
+@app.route('/test_endpoint', methods=['GET'])
+def test_endpoint():
+    """Test endpoint to verify that the server is working correctly."""
+    return jsonify({
+        'success': True,
+        'message': 'Test endpoint is working correctly',
+        'timestamp': time.time()
+    })
+
 if __name__ == '__main__':
     # Initialize the database directly before running the app
     init_db()
-    app.run(debug=False, port=5001, threaded=True) 
+    
+    import argparse
+    parser = argparse.ArgumentParser(description='Telegram to SMS Forwarder Web App')
+    parser.add_argument('--port', type=int, default=5001, help='Port to run the server on')
+    args = parser.parse_args()
+    
+    app.run(debug=True, port=args.port, threaded=True) 
