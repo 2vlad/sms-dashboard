@@ -28,7 +28,9 @@ FORWARD_OWN_MESSAGES = True
 DEBUG = True
 
 # Message summarizer configuration
-# Set to True to enable message summarization for muted chats
+# Set to True to enable message summarization for non-muted chats
+# When enabled, messages from non-muted chats will be collected and summarized
+# before sending as a single SMS, rather than sending each message immediately
 ENABLE_MESSAGE_SUMMARIZATION = True
 
 # Delay in seconds before summarizing messages (default: 5 minutes)

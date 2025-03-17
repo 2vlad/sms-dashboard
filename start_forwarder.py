@@ -285,13 +285,15 @@ async def run_forwarder():
                     except Exception as e:
                         logger.error(f"Error checking mute status: {e}")
                 
-                # For muted chats, add to summarizer instead of sending immediately
-                if is_muted and config.ENABLE_MESSAGE_SUMMARIZATION and summarizer:
-                    logger.info(f"Adding message from muted chat {chat_name} to summarizer")
-                    summarizer.add_message(chat_id, message_text, sender_name)
+                # Skip muted chats entirely
+                if is_muted:
+                    logger.info(f"Skipping message from muted chat {chat_name}")
                     return
-                elif is_muted:
-                    logger.info(f"Skipping message from muted chat {chat_name} (summarization disabled)")
+                
+                # For non-muted chats, either send immediately or add to summarizer based on config
+                if config.ENABLE_MESSAGE_SUMMARIZATION and summarizer:
+                    logger.info(f"Adding message from non-muted chat {chat_name} to summarizer")
+                    summarizer.add_message(chat_id, message_text, sender_name)
                     return
                 
                 # Format the message for SMS

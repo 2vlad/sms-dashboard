@@ -22,9 +22,14 @@ class MessageSummarizer:
     """
     Class for summarizing messages and filtering out sensitive content.
     
-    This class collects messages from a chat over a period of time,
+    This class collects messages from non-muted chats over a period of time,
     then summarizes them while filtering out sensitive content related to
     drugs, weapons, gambling, and adult content.
+    
+    Instead of sending an SMS for each message immediately, this collects
+    multiple messages and sends a single summarized SMS after a delay period.
+    This helps reduce the number of SMS messages sent while still providing
+    important information.
     """
     
     def __init__(self, delay_seconds=300, max_messages=10, max_summary_length=160):
