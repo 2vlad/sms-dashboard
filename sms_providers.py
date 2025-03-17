@@ -8,8 +8,6 @@ import os
 import logging
 import requests
 from abc import ABC, abstractmethod
-from twilio.rest import Client as TwilioClient
-from twilio.base.exceptions import TwilioRestException
 from dotenv import load_dotenv
 
 # Configure logging
@@ -35,45 +33,21 @@ class SMSProvider(ABC):
         """Verify that the provider credentials are valid."""
         pass
 
+# Define dummy classes for other providers to avoid import errors
 class TwilioProvider(SMSProvider):
-    """Twilio SMS provider implementation."""
+    """Dummy Twilio SMS provider implementation."""
     
     def __init__(self):
-        self.account_sid = os.getenv('TWILIO_ACCOUNT_SID')
-        self.auth_token = os.getenv('TWILIO_AUTH_TOKEN')
-        self.phone_number = os.getenv('TWILIO_PHONE_NUMBER')
-        
-        # Check if required environment variables are set
-        if not all([self.account_sid, self.auth_token, self.phone_number]):
-            logger.error("Missing required Twilio environment variables")
-            raise ValueError("Missing required Twilio environment variables")
-        
-        self.client = TwilioClient(self.account_sid, self.auth_token)
+        logger.error("Twilio provider is not available in this deployment")
+        raise ValueError("Twilio provider is not available in this deployment")
     
     def send_sms(self, message_text, to_number):
         """Send an SMS using Twilio."""
-        try:
-            message = self.client.messages.create(
-                body=message_text,
-                from_=self.phone_number,
-                to=to_number
-            )
-            logger.info(f"SMS sent successfully via Twilio: {message.sid}")
-            return True
-        except TwilioRestException as e:
-            logger.error(f"Failed to send SMS via Twilio: {e}")
-            return False
+        raise NotImplementedError("Twilio provider is not available in this deployment")
     
     def verify_credentials(self):
         """Verify Twilio credentials."""
-        try:
-            # Try to access account info to verify credentials
-            account = self.client.api.accounts(self.account_sid).fetch()
-            logger.info(f"Twilio credentials verified for account: {account.friendly_name}")
-            return True
-        except TwilioRestException as e:
-            logger.error(f"Twilio credentials verification failed: {e}")
-            return False
+        raise NotImplementedError("Twilio provider is not available in this deployment")
 
 class SMSCProvider(SMSProvider):
     """SMSC.ru SMS provider implementation."""
@@ -143,161 +117,77 @@ class SMSCProvider(SMSProvider):
             return False
 
 class MessageBirdProvider(SMSProvider):
-    """MessageBird SMS provider implementation."""
+    """Dummy MessageBird SMS provider implementation."""
     
     def __init__(self):
-        self.api_key = os.getenv('MESSAGEBIRD_API_KEY')
-        self.originator = os.getenv('MESSAGEBIRD_ORIGINATOR', 'SMS')
-        
-        # Check if required environment variables are set
-        if not self.api_key:
-            logger.error("Missing required MessageBird environment variables")
-            raise ValueError("Missing required MessageBird environment variables")
-        
-        # API endpoint
-        self.base_url = "https://rest.messagebird.com/messages"
+        logger.error("MessageBird provider is not available in this deployment")
+        raise ValueError("MessageBird provider is not available in this deployment")
     
     def send_sms(self, message_text, to_number):
         """Send an SMS using MessageBird."""
-        headers = {
-            'Authorization': f'AccessKey {self.api_key}',
-            'Content-Type': 'application/json'
-        }
-        
-        data = {
-            'originator': self.originator,
-            'recipients': [to_number],
-            'body': message_text
-        }
-        
-        try:
-            response = requests.post(self.base_url, json=data, headers=headers)
-            response.raise_for_status()
-            result = response.json()
-            
-            logger.info(f"SMS sent successfully via MessageBird: {result.get('id', 'Unknown ID')}")
-            return True
-        except Exception as e:
-            logger.error(f"Failed to send SMS via MessageBird: {e}")
-            return False
+        raise NotImplementedError("MessageBird provider is not available in this deployment")
     
     def verify_credentials(self):
         """Verify MessageBird credentials."""
-        headers = {
-            'Authorization': f'AccessKey {self.api_key}'
-        }
-        
-        try:
-            response = requests.get("https://rest.messagebird.com/balance", headers=headers)
-            response.raise_for_status()
-            result = response.json()
-            
-            logger.info(f"MessageBird credentials verified. Balance: {result.get('amount', 'Unknown')}")
-            return True
-        except Exception as e:
-            logger.error(f"MessageBird credentials verification failed: {e}")
-            return False
+        raise NotImplementedError("MessageBird provider is not available in this deployment")
 
 class VonageProvider(SMSProvider):
-    """Vonage (formerly Nexmo) SMS provider implementation."""
+    """Dummy Vonage SMS provider implementation."""
     
     def __init__(self):
-        self.api_key = os.getenv('VONAGE_API_KEY')
-        self.api_secret = os.getenv('VONAGE_API_SECRET')
-        self.from_number = os.getenv('VONAGE_FROM_NUMBER', 'SMS')
-        
-        # Check if required environment variables are set
-        if not all([self.api_key, self.api_secret]):
-            logger.error("Missing required Vonage environment variables")
-            raise ValueError("Missing required Vonage environment variables")
-        
-        # API endpoint
-        self.base_url = "https://rest.nexmo.com/sms/json"
+        logger.error("Vonage provider is not available in this deployment")
+        raise ValueError("Vonage provider is not available in this deployment")
     
     def send_sms(self, message_text, to_number):
         """Send an SMS using Vonage."""
-        data = {
-            'api_key': self.api_key,
-            'api_secret': self.api_secret,
-            'from': self.from_number,
-            'to': to_number,
-            'text': message_text
-        }
-        
-        try:
-            response = requests.post(self.base_url, data=data)
-            response.raise_for_status()
-            result = response.json()
-            
-            # Check if all messages were sent successfully
-            if result['message-count'] == '0':
-                logger.error(f"Failed to send SMS via Vonage: No messages sent")
-                return False
-            
-            for message in result['messages']:
-                if message['status'] != '0':
-                    logger.error(f"Failed to send SMS via Vonage: {message['error-text']}")
-                    return False
-            
-            logger.info(f"SMS sent successfully via Vonage")
-            return True
-        except Exception as e:
-            logger.error(f"Failed to send SMS via Vonage: {e}")
-            return False
+        raise NotImplementedError("Vonage provider is not available in this deployment")
     
     def verify_credentials(self):
         """Verify Vonage credentials."""
-        data = {
-            'api_key': self.api_key,
-            'api_secret': self.api_secret
-        }
-        
-        try:
-            response = requests.get("https://rest.nexmo.com/account/get-balance", params=data)
-            response.raise_for_status()
-            result = response.json()
-            
-            if 'error-code' in result and result['error-code'] != '0':
-                logger.error(f"Vonage credentials verification failed: {result.get('error-text', 'Unknown error')}")
-                return False
-            
-            logger.info(f"Vonage credentials verified. Balance: {result.get('value', 'Unknown')}")
-            return True
-        except Exception as e:
-            logger.error(f"Vonage credentials verification failed: {e}")
-            return False
+        raise NotImplementedError("Vonage provider is not available in this deployment")
 
 def get_sms_provider(provider_name=None):
     """
-    Factory function to get the appropriate SMS provider.
-    If provider_name is not specified, it will be read from the SMS_PROVIDER environment variable.
+    Get an instance of the specified SMS provider.
+    
+    Args:
+        provider_name (str, optional): The name of the SMS provider to use.
+            If not specified, the SMS_PROVIDER environment variable is used.
+            If that is not set, SMSC is used as the default.
+    
+    Returns:
+        SMSProvider: An instance of the specified SMS provider.
+    
+    Raises:
+        ValueError: If the specified provider is not supported or if the required
+            environment variables for the provider are not set.
     """
     if not provider_name:
-        provider_name = os.getenv('SMS_PROVIDER', 'twilio').lower()
+        provider_name = os.getenv('SMS_PROVIDER', 'smsc').lower()
     
     providers = {
-        'twilio': TwilioProvider,
         'smsc': SMSCProvider,
         'messagebird': MessageBirdProvider,
-        'vonage': VonageProvider
+        'vonage': VonageProvider,
+        'twilio': TwilioProvider
     }
     
     if provider_name not in providers:
-        logger.error(f"Unknown SMS provider: {provider_name}. Falling back to Twilio.")
-        provider_name = 'twilio'
+        logger.error(f"Unknown SMS provider: {provider_name}. Falling back to SMSC.")
+        provider_name = 'smsc'
     
     try:
+        logger.info(f"Using SMS provider: {provider_name}")
         return providers[provider_name]()
-    except ValueError as e:
-        logger.error(f"Failed to initialize {provider_name} provider: {e}")
+    except Exception as e:
+        logger.error(f"Failed to initialize SMS provider {provider_name}: {e}")
         
-        # Try to fall back to another provider if the requested one fails
-        for fallback in ['smsc', 'messagebird', 'vonage', 'twilio']:
-            if fallback != provider_name:
-                try:
-                    logger.info(f"Trying fallback provider: {fallback}")
-                    return providers[fallback]()
-                except ValueError:
-                    continue
+        # Only try SMSC as a fallback
+        if provider_name != 'smsc':
+            try:
+                logger.info(f"Falling back to SMSC provider")
+                return SMSCProvider()
+            except Exception as fallback_e:
+                logger.error(f"Failed to initialize fallback SMSC provider: {fallback_e}")
         
-        raise ValueError("No SMS provider could be initialized. Check your environment variables.") 
+        raise ValueError(f"Failed to initialize any SMS provider") 
