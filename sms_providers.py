@@ -116,6 +116,70 @@ class SMSCProvider(SMSProvider):
             logger.error(f"SMSC credentials verification failed: {e}")
             return False
 
+class SMSProstoProvider(SMSProvider):
+    """SMS-PROSTO.RU SMS provider implementation."""
+    
+    def __init__(self):
+        self.api_key = os.getenv('SMSPROSTO_API_KEY')
+        self.sender = os.getenv('SMSPROSTO_SENDER', 'SMS')
+        
+        # Check if required environment variables are set
+        if not self.api_key:
+            logger.error("Missing required SMS-PROSTO environment variables")
+            raise ValueError("Missing required SMS-PROSTO environment variables")
+        
+        # API endpoint
+        self.base_url = "https://api.sms-prosto.ru"
+    
+    def send_sms(self, message_text, to_number):
+        """Send an SMS using SMS-PROSTO.RU."""
+        # Format the phone number (remove '+' if present)
+        if to_number.startswith('+'):
+            to_number = to_number[1:]
+        
+        params = {
+            'apiKey': self.api_key,
+            'phone': to_number,
+            'text': message_text,
+            'sender': self.sender
+        }
+        
+        try:
+            response = requests.get(f"{self.base_url}/messages/send", params=params)
+            response.raise_for_status()
+            result = response.json()
+            
+            if result.get('status') == 'error':
+                logger.error(f"Failed to send SMS via SMS-PROSTO: {result.get('message', 'Unknown error')}")
+                return False
+            
+            logger.info(f"SMS sent successfully via SMS-PROSTO: {result.get('id', 'Unknown ID')}")
+            return True
+        except Exception as e:
+            logger.error(f"Failed to send SMS via SMS-PROSTO: {e}")
+            return False
+    
+    def verify_credentials(self):
+        """Verify SMS-PROSTO credentials."""
+        params = {
+            'apiKey': self.api_key
+        }
+        
+        try:
+            response = requests.get(f"{self.base_url}/balance", params=params)
+            response.raise_for_status()
+            result = response.json()
+            
+            if result.get('status') == 'error':
+                logger.error(f"SMS-PROSTO credentials verification failed: {result.get('message', 'Unknown error')}")
+                return False
+            
+            logger.info(f"SMS-PROSTO credentials verified. Balance: {result.get('balance', 'Unknown')}")
+            return True
+        except Exception as e:
+            logger.error(f"SMS-PROSTO credentials verification failed: {e}")
+            return False
+
 class MessageBirdProvider(SMSProvider):
     """Dummy MessageBird SMS provider implementation."""
     
@@ -153,7 +217,7 @@ def get_sms_provider(provider_name=None):
     Args:
         provider_name (str, optional): The name of the SMS provider to use.
             If not specified, the SMS_PROVIDER environment variable is used.
-            If that is not set, SMSC is used as the default.
+            If that is not set, SMS-PROSTO is used as the default.
     
     Returns:
         SMSProvider: An instance of the specified SMS provider.
@@ -163,18 +227,19 @@ def get_sms_provider(provider_name=None):
             environment variables for the provider are not set.
     """
     if not provider_name:
-        provider_name = os.getenv('SMS_PROVIDER', 'smsc').lower()
+        provider_name = os.getenv('SMS_PROVIDER', 'smsprosto').lower()
     
     providers = {
         'smsc': SMSCProvider,
+        'smsprosto': SMSProstoProvider,
         'messagebird': MessageBirdProvider,
         'vonage': VonageProvider,
         'twilio': TwilioProvider
     }
     
     if provider_name not in providers:
-        logger.error(f"Unknown SMS provider: {provider_name}. Falling back to SMSC.")
-        provider_name = 'smsc'
+        logger.error(f"Unknown SMS provider: {provider_name}. Falling back to SMS-PROSTO.")
+        provider_name = 'smsprosto'
     
     try:
         logger.info(f"Using SMS provider: {provider_name}")
@@ -182,12 +247,12 @@ def get_sms_provider(provider_name=None):
     except Exception as e:
         logger.error(f"Failed to initialize SMS provider {provider_name}: {e}")
         
-        # Only try SMSC as a fallback
-        if provider_name != 'smsc':
+        # Try SMS-PROSTO as a fallback
+        if provider_name != 'smsprosto':
             try:
-                logger.info(f"Falling back to SMSC provider")
-                return SMSCProvider()
+                logger.info(f"Falling back to SMS-PROSTO provider")
+                return SMSProstoProvider()
             except Exception as fallback_e:
-                logger.error(f"Failed to initialize fallback SMSC provider: {fallback_e}")
+                logger.error(f"Failed to initialize fallback SMS-PROSTO provider: {fallback_e}")
         
         raise ValueError(f"Failed to initialize any SMS provider") 
