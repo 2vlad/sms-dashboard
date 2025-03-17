@@ -199,6 +199,66 @@ def run_service():
             logger.error(f"Error monitoring forwarder: {e}")
             time.sleep(60)  # Wait a minute before trying again
 
+async def is_monitored_chat(client, chat_id):
+    """Check if a chat should be monitored based on config."""
+    logger.info(f"Checking if chat {chat_id} should be monitored")
+    
+    # First, check if we should only monitor non-muted chats
+    if config.ONLY_NON_MUTED_CHATS:
+        try:
+            # Get the dialogs with a higher limit to ensure we find the chat
+            dialogs = await client.get_dialogs(limit=200)
+            found_dialog = False
+            
+            for d in dialogs:
+                if hasattr(d, 'id') and d.id == chat_id:
+                    found_dialog = True
+                    # Check if the chat is muted
+                    if d.archived or d.notify_settings.mute_until:
+                        logger.info(f"Chat {chat_id} is muted, skipping")
+                        return False
+                    logger.info(f"Chat {chat_id} is not muted")
+                    break
+                elif hasattr(d, 'entity') and hasattr(d.entity, 'id') and d.entity.id == chat_id:
+                    found_dialog = True
+                    # Check if the chat is muted
+                    if hasattr(d, 'dialog') and hasattr(d.dialog, 'notify_settings') and d.dialog.notify_settings.mute_until:
+                        logger.info(f"Chat {chat_id} is muted, skipping")
+                        return False
+                    logger.info(f"Chat {chat_id} is not muted")
+                    break
+            
+            if not found_dialog:
+                logger.warning(f"Dialog for chat {chat_id} not found in the first 200 dialogs")
+                # If we can't find the dialog, default to NOT monitoring it for safety
+                return False
+        except Exception as e:
+            logger.error(f"Error checking mute status: {e}")
+            # If there's an error, default to NOT monitoring to be safe
+            return False
+    
+    # Then check other monitoring conditions
+    if config.FORWARD_ALL_CHATS:
+        logger.info(f"FORWARD_ALL_CHATS is enabled, chat {chat_id} will be monitored")
+        return True
+    
+    if not config.MONITORED_CHATS:
+        return False
+    
+    # Check if chat_id is in the monitored chats list
+    if chat_id in config.MONITORED_CHATS:
+        return True
+    
+    # If chat_id is numeric but monitored chats contains usernames
+    try:
+        entity = await client.get_entity(chat_id)
+        if hasattr(entity, 'username') and entity.username in config.MONITORED_CHATS:
+            return True
+    except Exception as e:
+        logger.error(f"Error checking entity: {e}")
+    
+    return False
+
 if __name__ == "__main__":
     # Parse command line arguments
     if len(sys.argv) > 1:
