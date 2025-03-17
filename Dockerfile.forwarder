@@ -1,19 +1,9 @@
 FROM python:3.9-slim
-
 WORKDIR /app
-
-# Install dependencies
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
-
-# Copy application code
 COPY . .
-
-# Create necessary directories
 RUN mkdir -p telegram_sessions data
-
-# Set environment variables
 ENV PYTHONUNBUFFERED=1
-
-# Run the forwarder service
-CMD ["python", "run_forwarder_service.py"] 
+ENV PRODUCTION=true
+CMD ["python", "run_forwarder_service.py"]

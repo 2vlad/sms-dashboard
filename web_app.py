@@ -2026,6 +2026,15 @@ if __name__ == '__main__':
     import argparse
     parser = argparse.ArgumentParser(description='Telegram to SMS Forwarder Web App')
     parser.add_argument('--port', type=int, default=5001, help='Port to run the server on')
+    parser.add_argument('--host', type=str, default='0.0.0.0', help='Host to run the server on')
+    parser.add_argument('--debug', action='store_true', help='Run in debug mode')
     args = parser.parse_args()
     
-    app.run(debug=True, port=args.port, threaded=True) 
+    # Determine if we're in a production environment
+    is_production = os.getenv('RAILWAY_ENVIRONMENT') == 'production' or os.getenv('PRODUCTION') == 'true'
+    
+    # In production, always use 0.0.0.0 as host and disable debug
+    if is_production:
+        app.run(host='0.0.0.0', port=args.port, debug=False, threaded=True)
+    else:
+        app.run(host=args.host, port=args.port, debug=args.debug, threaded=True) 
