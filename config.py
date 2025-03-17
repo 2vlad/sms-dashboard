@@ -26,3 +26,26 @@ FORWARD_OWN_MESSAGES = True
 
 # Set to True for more detailed logging
 DEBUG = True
+
+# Message summarizer configuration
+# Set to True to enable message summarization for muted chats
+ENABLE_MESSAGE_SUMMARIZATION = True
+
+# Delay in seconds before summarizing messages (default: 5 minutes)
+SUMMARIZATION_DELAY = 300
+
+# Maximum number of messages to include in a summary
+MAX_SUMMARY_MESSAGES = 10
+
+# List of sensitive content patterns to filter out from summaries
+# These are regex patterns that will be replaced with [filtered]
+SENSITIVE_CONTENT_PATTERNS = [
+    # Drugs related
+    r'\b(?:наркотик|героин|кокаин|марихуан|амфетамин|мет|мефедрон|соль|закладк[аи]|дурь)\b',
+    # Weapons related
+    r'\b(?:оружие|пистолет|автомат|винтовка|патрон|граната|нож|взрывчатк[аи])\b',
+    # Gambling related
+    r'\b(?:казино|ставк[аи]|букмекер|тотализатор|азартн|игорн|рулетк[аи]|покер|блэкджек)\b',
+    # Adult content related
+    r'\b(?:секс|порно|эротик|интим|проститут|эскорт|18\+)\b'
+]
