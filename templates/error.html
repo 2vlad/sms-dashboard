@@ -1,0 +1,97 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Error - Telegram to SMS Forwarder</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+    <style>
+        .error-container {
+            max-width: 800px;
+            margin: 50px auto;
+            padding: 20px;
+            background-color: #fff;
+            border-radius: 8px;
+            box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
+        }
+        .error-title {
+            color: #e74c3c;
+            margin-bottom: 20px;
+        }
+        .error-message {
+            margin-bottom: 20px;
+        }
+        .error-list {
+            background-color: #f8d7da;
+            border: 1px solid #f5c6cb;
+            border-radius: 4px;
+            padding: 15px;
+            margin-bottom: 20px;
+        }
+        .error-list ul {
+            margin: 10px 0;
+            padding-left: 20px;
+        }
+        .error-help {
+            background-color: #d4edda;
+            border: 1px solid #c3e6cb;
+            border-radius: 4px;
+            padding: 15px;
+            margin-bottom: 20px;
+        }
+        .btn-primary {
+            background-color: #007bff;
+            color: white;
+            border: none;
+            padding: 10px 15px;
+            border-radius: 4px;
+            cursor: pointer;
+            text-decoration: none;
+            display: inline-block;
+        }
+    </style>
+</head>
+<body>
+    <div class="error-container">
+        <h1 class="error-title">Application Error</h1>
+        
+        <div class="error-message">
+            <p>The application encountered an error and cannot continue. Please check the following information to resolve the issue:</p>
+        </div>
+        
+        {% if missing_vars %}
+        <div class="error-list">
+            <h3>Missing Environment Variables</h3>
+            <p>The following required environment variables are missing:</p>
+            <ul>
+                {% for var in missing_vars %}
+                <li><strong>{{ var }}</strong></li>
+                {% endfor %}
+            </ul>
+        </div>
+        {% endif %}
+        
+        {% if error %}
+        <div class="error-list">
+            <h3>Error Details</h3>
+            <p>{{ error }}</p>
+        </div>
+        {% endif %}
+        
+        <div class="error-help">
+            <h3>How to Fix</h3>
+            <p>To resolve this issue, please make sure all required environment variables are set in your Railway project:</p>
+            <ol>
+                <li>Go to your Railway dashboard</li>
+                <li>Select your project</li>
+                <li>Go to the "Variables" tab</li>
+                <li>Add all the missing environment variables</li>
+                <li>Redeploy your application</li>
+            </ol>
+            <p>For more information, please refer to the documentation or contact support.</p>
+        </div>
+        
+        <a href="/" class="btn-primary">Try Again</a>
+    </div>
+</body>
+</html> 

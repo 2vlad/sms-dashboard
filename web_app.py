@@ -17,28 +17,46 @@ from datetime import datetime, timedelta
 from functools import wraps
 from flask import Flask, render_template, request, redirect, url_for, session, flash, jsonify, make_response
 from dotenv import load_dotenv
-from telethon import TelegramClient, functions, types, events
-from telethon.errors import SessionPasswordNeededError
-from telethon.tl.types import User, Chat, Channel
-from telethon.sessions import StringSession
-import config
-from sms_providers import get_sms_provider
-from flask_session import Session  # Import Flask-Session
-from rate_limiter import rate_limiter
+import sys
 
 # Configure logging
 logging.basicConfig(
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-    level=logging.INFO
+    level=logging.INFO,
+    handlers=[
+        logging.StreamHandler(sys.stdout)
+    ]
 )
 logger = logging.getLogger(__name__)
 
 # Load environment variables
 load_dotenv()
 
+# Check for required environment variables
+required_env_vars = ['TELEGRAM_API_ID', 'TELEGRAM_API_HASH', 'FLASK_SECRET_KEY']
+missing_vars = [var for var in required_env_vars if not os.getenv(var)]
+if missing_vars:
+    logger.error(f"Missing required environment variables: {', '.join(missing_vars)}")
+    logger.error("Please set these environment variables in Railway or in a .env file")
+    # Continue anyway to show a proper error page to the user
+
 # Telegram API credentials
 API_ID = os.getenv('TELEGRAM_API_ID')
 API_HASH = os.getenv('TELEGRAM_API_HASH')
+
+try:
+    # Import potentially problematic modules inside try/except
+    from telethon import TelegramClient, functions, types, events
+    from telethon.errors import SessionPasswordNeededError
+    from telethon.tl.types import User, Chat, Channel
+    from telethon.sessions import StringSession
+    import config
+    from sms_providers import get_sms_provider
+    from flask_session import Session  # Import Flask-Session
+    from rate_limiter import rate_limiter
+except Exception as e:
+    logger.error(f"Error importing modules: {str(e)}", exc_info=True)
+    # Continue anyway to show a proper error page to the user
 
 # Create a directory for Telegram sessions
 TELEGRAM_SESSIONS_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'telegram_sessions')
@@ -61,90 +79,94 @@ app.config['DATABASE'] = 'forwarder.db'
 os.makedirs(app.config['SESSION_FILE_DIR'], exist_ok=True)
 
 # Initialize Flask-Session
-Session(app)
+try:
+    Session(app)
+except Exception as e:
+    logger.error(f"Error initializing Flask-Session: {str(e)}", exc_info=True)
 
 # Make sessions permanent by default
 @app.before_request
 def make_session_permanent():
     session.permanent = True
 
-# Initialize the database before the first request
-
 # Initialize database
 def init_db():
     """Initialize the SQLite database."""
-    conn = sqlite3.connect(app.config['DATABASE'])
-    cursor = conn.cursor()
-    
-    # Create users table
-    cursor.execute('''
-    CREATE TABLE IF NOT EXISTS users (
-        id INTEGER PRIMARY KEY,
-        telegram_id INTEGER UNIQUE,
-        phone_number TEXT,
-        first_name TEXT,
-        last_name TEXT,
-        username TEXT,
-        auth_date INTEGER,
-        last_login INTEGER
-    )
-    ''')
-    
-    # Create messages table
-    cursor.execute('''
-    CREATE TABLE IF NOT EXISTS messages (
-        id INTEGER PRIMARY KEY,
-        user_id INTEGER,
-        chat_name TEXT,
-        sender_name TEXT,
-        message_text TEXT,
-        timestamp INTEGER,
-        delivered BOOLEAN,
-        FOREIGN KEY (user_id) REFERENCES users (id)
-    )
-    ''')
-    
-    # Create service status table
-    cursor.execute('''
-    CREATE TABLE IF NOT EXISTS service_status (
-        id INTEGER PRIMARY KEY,
-        user_id INTEGER,
-        status TEXT,
-        last_check INTEGER,
-        error_message TEXT,
-        pid INTEGER,
-        FOREIGN KEY (user_id) REFERENCES users (id)
-    )
-    ''')
-    
-    # Create telegram_messages table
-    cursor.execute('''
-    CREATE TABLE IF NOT EXISTS telegram_messages (
-        id INTEGER PRIMARY KEY,
-        user_id INTEGER,
-        message_id INTEGER,
-        chat_id INTEGER,
-        chat_name TEXT,
-        sender_name TEXT,
-        message_text TEXT,
-        timestamp INTEGER,
-        forwarded BOOLEAN,
-        FOREIGN KEY (user_id) REFERENCES users (id),
-        UNIQUE(user_id, message_id, chat_id)
-    )
-    ''')
-    
-    # Check if the pid column exists in the service_status table
-    cursor.execute("PRAGMA table_info(service_status)")
-    columns = cursor.fetchall()
-    column_names = [column[1] for column in columns]
-    
-    if 'pid' not in column_names:
-        logger.info("Adding pid column to service_status table")
-        cursor.execute("ALTER TABLE service_status ADD COLUMN pid INTEGER")
-    
-    conn.commit()
-    conn.close()
+    try:
+        conn = sqlite3.connect(app.config['DATABASE'])
+        cursor = conn.cursor()
+        
+        # Create users table
+        cursor.execute('''
+        CREATE TABLE IF NOT EXISTS users (
+            id INTEGER PRIMARY KEY,
+            telegram_id INTEGER UNIQUE,
+            phone_number TEXT,
+            first_name TEXT,
+            last_name TEXT,
+            username TEXT,
+            auth_date INTEGER,
+            last_login INTEGER
+        )
+        ''')
+        
+        # Create messages table
+        cursor.execute('''
+        CREATE TABLE IF NOT EXISTS messages (
+            id INTEGER PRIMARY KEY,
+            user_id INTEGER,
+            chat_name TEXT,
+            sender_name TEXT,
+            message_text TEXT,
+            timestamp INTEGER,
+            delivered BOOLEAN,
+            FOREIGN KEY (user_id) REFERENCES users (id)
+        )
+        ''')
+        
+        # Create service status table
+        cursor.execute('''
+        CREATE TABLE IF NOT EXISTS service_status (
+            id INTEGER PRIMARY KEY,
+            user_id INTEGER,
+            status TEXT,
+            last_check INTEGER,
+            error_message TEXT,
+            pid INTEGER,
+            FOREIGN KEY (user_id) REFERENCES users (id)
+        )
+        ''')
+        
+        # Create telegram_messages table
+        cursor.execute('''
+        CREATE TABLE IF NOT EXISTS telegram_messages (
+            id INTEGER PRIMARY KEY,
+            user_id INTEGER,
+            message_id INTEGER,
+            chat_id INTEGER,
+            chat_name TEXT,
+            sender_name TEXT,
+            message_text TEXT,
+            timestamp INTEGER,
+            forwarded BOOLEAN,
+            FOREIGN KEY (user_id) REFERENCES users (id),
+            UNIQUE(user_id, message_id, chat_id)
+        )
+        ''')
+        
+        # Check if the pid column exists in the service_status table
+        cursor.execute("PRAGMA table_info(service_status)")
+        columns = cursor.fetchall()
+        column_names = [column[1] for column in columns]
+        
+        if 'pid' not in column_names:
+            logger.info("Adding pid column to service_status table")
+            cursor.execute("ALTER TABLE service_status ADD COLUMN pid INTEGER")
+        
+        conn.commit()
+        conn.close()
+    except Exception as e:
+        logger.error(f"Error initializing database: {str(e)}", exc_info=True)
 
 # Database helper functions
 def get_db_connection():
@@ -940,10 +962,16 @@ async def sign_in_async(phone, code, phone_code_hash, password=None):
 # Routes
 @app.route('/')
 def index():
-    """Home page."""
-    if 'user' in session:
+    """Render the index page."""
+    # Check for required environment variables
+    missing_vars = [var for var in required_env_vars if not os.getenv(var)]
+    if missing_vars:
+        logger.error(f"Missing required environment variables: {', '.join(missing_vars)}")
+        return redirect(url_for('error_page'))
+    
+    if 'user_id' in session:
         return redirect(url_for('dashboard'))
-    return redirect(url_for('login'))
+    return render_template('index.html')
 
 @app.route('/login', methods=['GET', 'POST'])
 def login():
@@ -2018,6 +2046,18 @@ def test_endpoint():
         'message': 'Test endpoint is working correctly',
         'timestamp': time.time()
     })
+
+@app.route('/error', methods=['GET'])
+def error_page():
+    """Display an error page with information about missing environment variables."""
+    missing_vars = [var for var in required_env_vars if not os.getenv(var)]
+    return render_template('error.html', missing_vars=missing_vars)
+
+@app.errorhandler(500)
+def internal_error(error):
+    """Handle internal server errors."""
+    logger.error(f"Internal server error: {str(error)}", exc_info=True)
+    return render_template('error.html', error=str(error))
 
 if __name__ == '__main__':
     # Initialize the database directly before running the app
