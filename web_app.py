@@ -13,6 +13,7 @@ import asyncio
 import threading
 import subprocess
 import signal
+import requests
 from datetime import datetime, timedelta
 from functools import wraps
 from flask import Flask, render_template, request, redirect, url_for, session, flash, jsonify, make_response
@@ -151,6 +152,24 @@ def init_db():
             forwarded BOOLEAN,
             FOREIGN KEY (user_id) REFERENCES users (id),
             UNIQUE(user_id, message_id, chat_id)
+        )
+        ''')
+        
+        # Create summary_cache table
+        cursor.execute('''
+        CREATE TABLE IF NOT EXISTS summary_cache (
+            id INTEGER PRIMARY KEY,
+            user_id INTEGER,
+            chat_id INTEGER,
+            chat_name TEXT,
+            summary_text TEXT,
+            message_count INTEGER,
+            latest_message_id INTEGER,
+            latest_timestamp INTEGER,
+            created_at INTEGER,
+            updated_at INTEGER,
+            FOREIGN KEY (user_id) REFERENCES users (id),
+            UNIQUE(user_id, chat_id)
         )
         ''')
         
@@ -366,6 +385,8 @@ async def get_recent_telegram_messages(user_id, limit=5):
     """Get recent messages from Telegram."""
     global active_clients
     
+    logger.info(f"Getting recent Telegram messages for user {user_id}, limit requested: {limit}")
+    
     # Create a unique session name for this request
     session_id = f"telegram_session_{user_id}_{int(time.time())}"
     
@@ -407,22 +428,43 @@ async def get_recent_telegram_messages(user_id, limit=5):
             # Get all dialogs (chats) with a reasonable limit to avoid flood wait
             dialogs = await client.get_dialogs(limit=30)
             
+            logger.info(f"Found {len(dialogs)} total dialogs/chats")
+            
             # Filter out muted chats if configured to do so
             non_muted_chats = []
             for dialog in dialogs:
                 if not dialog.dialog.notify_settings.mute_until:
                     non_muted_chats.append(dialog.entity)
+                    # Log each non-muted chat for debugging
+                    logger.info(f"Non-muted chat: {get_display_name(dialog.entity)} (ID: {dialog.entity.id})")
                     # Limit to 10 chats to avoid flood wait
                     if len(non_muted_chats) >= 10:
                         break
+                else:
+                    # Log muted chats for debugging
+                    logger.info(f"Skipping muted chat: {get_display_name(dialog.entity)} (ID: {dialog.entity.id})")
+            
+            logger.info(f"Found {len(non_muted_chats)} non-muted chats")
             
             all_messages = []
             
             # Get recent messages from each non-muted chat
-            for chat in non_muted_chats[:5]:  # Limit to 5 chats to avoid flood wait
+            for idx, chat in enumerate(non_muted_chats[:5]):  # Limit to 5 chats to avoid flood wait
                 try:
+                    chat_name = get_display_name(chat)
+                    logger.info(f"Getting messages from chat {idx+1}/{len(non_muted_chats[:5])}: {chat_name}")
+                    
                     # Use a smaller limit per chat to avoid flood wait
-                    messages = await client.get_messages(chat, limit=2)
+                    messages = await client.get_messages(chat, limit=5)  # Increase to 5 messages per chat
+                    
+                    logger.info(f"Retrieved {len(messages)} messages from chat: {chat_name}")
+                    
+                    # Log each message retrieved for debugging
+                    for msg_idx, message in enumerate(messages):
+                        if message.message:  # Only include messages with text
+                            logger.info(f"  - Message {msg_idx+1}: {message.message[:30]}...")
+                        else:
+                            logger.info(f"  - Message {msg_idx+1}: <no text content>")
                     
                     for message in messages:
                         if message.message:  # Only include messages with text
@@ -442,12 +484,13 @@ async def get_recent_telegram_messages(user_id, limit=5):
                             all_messages.append({
                                 'id': message.id,
                                 'chat_id': chat.id,
-                                'chat_name': get_display_name(chat),
+                                'chat_name': chat_name,
                                 'sender_name': sender_name,
                                 'message_text': message_text,
                                 'timestamp': message.date.timestamp(),
                                 'forwarded': False  # Default to not forwarded
                             })
+                            logger.info(f"  - Added message: {sender_name} in {chat_name}: {message_text[:30]}...")
                 except Exception as e:
                     logger.error(f"Error getting messages from chat {get_display_name(chat)}: {e}")
                     # Don't break the loop, continue with other chats
@@ -459,8 +502,18 @@ async def get_recent_telegram_messages(user_id, limit=5):
             # Sort all messages by timestamp (newest first)
             all_messages.sort(key=lambda x: x['timestamp'], reverse=True)
             
+            logger.info(f"Total messages retrieved before limit: {len(all_messages)}")
+            
             # Take only the most recent messages
             recent_messages = all_messages[:limit]
+            
+            logger.info(f"Returning {len(recent_messages)} recent messages after applying limit {limit}")
+            if len(recent_messages) < limit:
+                logger.warning(f"Returning fewer messages ({len(recent_messages)}) than requested ({limit}). Check if you have enough active chats with recent messages.")
+            
+            # Log each message being returned
+            for idx, msg in enumerate(recent_messages):
+                logger.info(f"Return message {idx+1}: {msg['sender_name']} in {msg['chat_name']}: {msg['message_text'][:30]}...")
             
             # Check which messages have been forwarded
             conn = get_db_connection()
@@ -871,39 +924,97 @@ def run_async(coro):
         return result
     except asyncio.TimeoutError:
         logger.error(f"Async operation timed out after {timeout} seconds")
+        raise ConnectionError(f"Operation timed out after {timeout} seconds. Please try again.")
+    except ConnectionError as e:
+        logger.error(f"Connection error in async operation: {str(e)}")
         raise
     except Exception as e:
         logger.error(f"Error in async operation: {str(e)}", exc_info=True)
-        raise
+        
+        # Convert certain errors to more user-friendly ConnectionError
+        if "connection" in str(e).lower() or "disconnected" in str(e).lower():
+            raise ConnectionError(f"Failed to connect: {str(e)}")
+        else:
+            raise
     finally:
-        loop.close()
+        try:
+            loop.close()
+        except:
+            pass
 
 # Async Telegram client operations
 async def send_code_request_async(phone):
     """Send a code request to Telegram asynchronously."""
-    client = TelegramClient(WEB_LOGIN_SESSION_PATH, API_ID, API_HASH)
-    await client.connect()
-    try:
-        logger.info(f"Sending code request to Telegram for phone: {phone}")
-        # Force SMS code if possible
-        sent = await client.send_code_request(
-            phone,
-            force_sms=True
-        )
-        logger.info(f"Code request sent successfully. Phone code hash: {sent.phone_code_hash}")
-        # Print all available methods for debugging
-        logger.info(f"Code type: {sent.type}")
+    # Maximum number of retries
+    max_retries = 3
+    retry_delay = 1  # seconds
+
+    for attempt in range(1, max_retries + 1):
+        client = TelegramClient(WEB_LOGIN_SESSION_PATH, API_ID, API_HASH)
         
-        # Store the session to ensure it persists
-        await client.disconnect()
-        await client.connect()
-        
-        return sent.phone_code_hash  # Return the phone_code_hash
-    except Exception as e:
-        logger.error(f"Error sending code request: {str(e)}")
-        raise e
-    finally:
-        await client.disconnect()
+        try:
+            logger.info(f"Attempt {attempt}/{max_retries}: Connecting to Telegram...")
+            
+            # Set a timeout for connection
+            await asyncio.wait_for(client.connect(), timeout=10)
+            
+            if await client.is_user_authorized():
+                logger.info("Already authorized with existing session")
+            
+            logger.info(f"Sending code request to Telegram for phone: {phone}")
+            
+            # Add timeout for send_code_request operation
+            sent = await asyncio.wait_for(
+                client.send_code_request(
+                    phone,
+                    force_sms=True
+                ),
+                timeout=15
+            )
+            
+            logger.info(f"Code request sent successfully. Phone code hash: {sent.phone_code_hash}")
+            logger.info(f"Code type: {sent.type}")
+            
+            return sent.phone_code_hash  # Return the phone_code_hash
+            
+        except asyncio.TimeoutError:
+            logger.error(f"Attempt {attempt}/{max_retries}: Timeout connecting to Telegram or sending code")
+            if attempt < max_retries:
+                logger.info(f"Retrying in {retry_delay} seconds...")
+                await asyncio.sleep(retry_delay)
+                # Double the delay for next retry (exponential backoff)
+                retry_delay *= 2
+            else:
+                logger.error("Maximum retries reached. Failed to connect to Telegram.")
+                raise ConnectionError("Failed to connect to Telegram after multiple attempts. Please try again later.")
+                
+        except ConnectionError as e:
+            logger.error(f"Attempt {attempt}/{max_retries}: Connection error: {str(e)}")
+            if attempt < max_retries:
+                logger.info(f"Retrying in {retry_delay} seconds...")
+                await asyncio.sleep(retry_delay)
+                # Double the delay for next retry (exponential backoff)
+                retry_delay *= 2
+            else:
+                logger.error("Maximum retries reached. Failed to connect to Telegram.")
+                raise ConnectionError("Failed to connect to Telegram after multiple attempts. Please try again later.")
+                
+        except Exception as e:
+            logger.error(f"Attempt {attempt}/{max_retries}: Error sending code request: {str(e)}")
+            if attempt < max_retries:
+                logger.info(f"Retrying in {retry_delay} seconds...")
+                await asyncio.sleep(retry_delay)
+                # Double the delay for next retry (exponential backoff)
+                retry_delay *= 2
+            else:
+                logger.error("Maximum retries reached. Failed to send code request.")
+                raise e
+                
+        finally:
+            try:
+                await client.disconnect()
+            except:
+                pass
 
 async def sign_in_async(phone, code, phone_code_hash, password=None):
     """Sign in to Telegram asynchronously."""
@@ -962,16 +1073,13 @@ async def sign_in_async(phone, code, phone_code_hash, password=None):
 # Routes
 @app.route('/')
 def index():
-    """Render the index page."""
-    # Check for required environment variables
-    missing_vars = [var for var in required_env_vars if not os.getenv(var)]
-    if missing_vars:
-        logger.error(f"Missing required environment variables: {', '.join(missing_vars)}")
-        return redirect(url_for('error_page'))
-    
-    if 'user_id' in session:
+    """Home page."""
+    # Check if the user is logged in
+    if session.get('user'):
         return redirect(url_for('dashboard'))
-    return render_template('index.html')
+    else:
+        # Always redirect to login page, even if there are missing environment variables
+        return redirect(url_for('login'))
 
 @app.route('/login', methods=['GET', 'POST'])
 def login():
@@ -997,9 +1105,21 @@ def login():
             
             flash('Verification code has been sent to your Telegram app', 'success')
             return redirect(url_for('verify'))
+        except ConnectionError as e:
+            logger.error(f"Connection error: {str(e)}")
+            flash('Failed to connect to Telegram. Please check your internet connection and try again.', 'error')
+            return render_template('login.html')
         except Exception as e:
             logger.error(f"Login error: {str(e)}")
-            flash(f'Error: {str(e)}', 'error')
+            # Display a more user-friendly error message
+            if "disconnected" in str(e).lower():
+                flash('Connection to Telegram was interrupted. Please try again.', 'error')
+            elif "flood" in str(e).lower():
+                flash('Too many attempts. Please wait a few minutes before trying again.', 'error')
+            elif "user auth" in str(e).lower() or "authorization" in str(e).lower():
+                flash('Authentication failed. Please make sure your phone number is correct.', 'error')
+            else:
+                flash(f'Error: {str(e)}', 'error')
             return render_template('login.html')
     
     return render_template('login.html')
@@ -1145,7 +1265,7 @@ def dashboard():
 def settings():
     """Settings page."""
     # Get the user's Telegram ID
-    user_id = session.get('user_id')
+    user_id = session.get('user', {}).get('id')
     
     if request.method == 'POST':
         # Update settings
@@ -1164,6 +1284,20 @@ def settings():
             chat_window = int(request.form.get('chat_window', 3600))
             daily_limit = int(request.form.get('daily_limit', 30))
             
+            # Get selected chats from form
+            selected_chats = []
+            for key in request.form:
+                if key.startswith('chat_'):
+                    chat_id = key.replace('chat_', '')
+                    # Try to convert to integer if possible
+                    try:
+                        chat_id = int(chat_id)
+                    except ValueError:
+                        pass
+                    selected_chats.append(chat_id)
+            
+            logger.info(f"Selected chats: {selected_chats}")
+            
             # Update the config file
             with open('config.py', 'w') as f:
                 f.write(f"""# Configuration for Telegram to SMS Forwarder
@@ -1177,7 +1311,7 @@ ONLY_NON_MUTED_CHATS = {str(only_non_muted_chats)}
 
 # List of chat usernames or IDs to monitor (if FORWARD_ALL_CHATS is False)
 # Example: ['user1', 'user2', 'group1', 123456789]
-MONITORED_CHATS = ['me']
+MONITORED_CHATS = {repr(selected_chats)}
 
 # Set to True to include the sender's name in the SMS
 INCLUDE_SENDER_NAME = True
@@ -1232,7 +1366,9 @@ DEBUG = True
     # Get the current usage information
     limits_info = rate_limiter.get_limits_info()
     
-    return render_template('settings.html', settings=current_settings, limits_info=limits_info)
+    return render_template('settings.html', 
+                          settings=current_settings, 
+                          limits_info=limits_info)
 
 @app.route('/check_status')
 @login_required
@@ -2049,15 +2185,564 @@ def test_endpoint():
 
 @app.route('/error', methods=['GET'])
 def error_page():
-    """Display an error page with information about missing environment variables."""
-    missing_vars = [var for var in required_env_vars if not os.getenv(var)]
-    return render_template('error.html', missing_vars=missing_vars)
+    """Error page."""
+    # This page will only be shown if directly accessed
+    error = request.args.get('error', 'An unknown error occurred.')
+    return render_template('error.html', error=error)
 
 @app.errorhandler(500)
 def internal_error(error):
     """Handle internal server errors."""
     logger.error(f"Internal server error: {str(error)}", exc_info=True)
     return render_template('error.html', error=str(error))
+
+def get_cached_summary(user_id, chat_id, chat_name=None):
+    """Get a cached summary for a chat if it exists and is not outdated."""
+    conn = get_db_connection()
+    try:
+        # Get the cached summary
+        cached = conn.execute(
+            'SELECT * FROM summary_cache WHERE user_id = ? AND chat_id = ?',
+            (user_id, chat_id)
+        ).fetchone()
+        
+        chat_info = f"chat {chat_id}" + (f" ({chat_name})" if chat_name else "")
+        
+        if cached:
+            logger.info(f"Found cached summary for {chat_info}")
+            return dict(cached)
+        else:
+            logger.info(f"No cached summary found for {chat_info}")
+            return None
+    except Exception as e:
+        logger.error(f"Error getting cached summary: {str(e)}")
+        return None
+    finally:
+        conn.close()
+
+def save_summary_to_cache(user_id, chat_id, chat_name, summary_text, message_count, latest_message_id, latest_timestamp):
+    """Save or update a summary in the cache."""
+    conn = get_db_connection()
+    try:
+        current_time = int(time.time())
+        
+        # Check if a summary already exists for this chat
+        existing = conn.execute(
+            'SELECT id FROM summary_cache WHERE user_id = ? AND chat_id = ?',
+            (user_id, chat_id)
+        ).fetchone()
+        
+        if existing:
+            # Update existing summary
+            conn.execute(
+                '''UPDATE summary_cache 
+                SET summary_text = ?, message_count = ?, latest_message_id = ?, 
+                latest_timestamp = ?, updated_at = ?, chat_name = ?
+                WHERE user_id = ? AND chat_id = ?''',
+                (summary_text, message_count, latest_message_id, latest_timestamp, 
+                 current_time, chat_name, user_id, chat_id)
+            )
+            logger.info(f"Updated cached summary for chat {chat_id} ({chat_name})")
+        else:
+            # Insert new summary
+            conn.execute(
+                '''INSERT INTO summary_cache 
+                (user_id, chat_id, chat_name, summary_text, message_count, 
+                latest_message_id, latest_timestamp, created_at, updated_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)''',
+                (user_id, chat_id, chat_name, summary_text, message_count, 
+                 latest_message_id, latest_timestamp, current_time, current_time)
+            )
+            logger.info(f"Created new cached summary for chat {chat_id} ({chat_name})")
+        
+        conn.commit()
+        return True
+    except Exception as e:
+        logger.error(f"Error saving summary to cache: {str(e)}")
+        conn.rollback()
+        return False
+    finally:
+        conn.close()
+
+def should_generate_new_summary(user_id, chat_id, chat_name, messages):
+    """Check if we should generate a new summary based on new messages."""
+    # Guard clauses
+    if not messages:
+        logger.warning(f"No messages to generate summary for chat {chat_name}")
+        return False
+        
+    # Sort messages by timestamp (newest first)
+    sorted_messages = sorted(messages, key=lambda x: x.get('timestamp', 0), reverse=True)
+    
+    latest_message = sorted_messages[0]
+    latest_message_id = latest_message.get('id')
+    latest_timestamp = latest_message.get('timestamp')
+    
+    # Get cached summary
+    cached = get_cached_summary(user_id, chat_id)
+    
+    # If there's no cached summary, we should generate a new one
+    if not cached:
+        logger.info(f"No cached summary exists for chat {chat_id} ({chat_name}), generating new one")
+        return True
+    
+    # Safety check - if cached doesn't have the expected fields, generate a new summary
+    if 'latest_message_id' not in cached or 'latest_timestamp' not in cached or 'message_count' not in cached:
+        logger.warning(f"Cached summary for chat {chat_id} ({chat_name}) is missing fields, generating new one")
+        return True
+    
+    # If the latest message is newer than our cached summary, generate a new one
+    if latest_message_id != cached['latest_message_id'] or latest_timestamp > cached['latest_timestamp']:
+        logger.info(f"New messages in chat {chat_id} ({chat_name}), generating new summary")
+        return True
+    
+    # If the message count has changed significantly, generate a new summary
+    if abs(len(messages) - cached['message_count']) >= 2:  # If 2+ new messages
+        logger.info(f"Message count changed for chat {chat_id} ({chat_name}), generating new summary")
+        return True
+        
+    logger.info(f"Using cached summary for chat {chat_id} ({chat_name})")
+    return False
+
+async def summarize_messages_with_anthropic(messages):
+    """Summarize a list of messages using Anthropic API into a single sentence."""
+    try:
+        # Get API key from environment
+        api_key = os.getenv('ANTHROPIC_API_KEY')
+        if not api_key:
+            logger.error("ANTHROPIC_API_KEY not found in environment variables")
+            return None
+            
+        # Prepare the messages for the API
+        message_text = "\n".join([f"{message.get('sender_name', 'Unknown')}: {message.get('message_text', '')}" 
+                                  for message in messages if message.get('message_text')])
+        
+        if not message_text:
+            logger.warning("No message text found to summarize")
+            return None
+            
+        logger.info(f"Summarizing {len(messages)} messages")
+        
+        # Make the API request to Anthropic
+        headers = {
+            "Content-Type": "application/json",
+            "x-api-key": api_key,
+            "anthropic-version": "2023-06-01"
+        }
+        
+        data = {
+            "model": "claude-3-haiku-20240307",
+            "max_tokens": 100,
+            "messages": [
+                {
+                    "role": "user",
+                    "content": f"Summarize the following conversation into a single concise sentence that captures the main point or latest topic. Do not start with phrases like 'The user is' or 'The main point of the conversation is'. Simply state the key information directly and concisely:\n\n{message_text}"
+                }
+            ]
+        }
+        
+        try:
+            logger.info("Sending request to Anthropic API")
+            response = requests.post(
+                "https://api.anthropic.com/v1/messages",
+                headers=headers,
+                json=data,
+                timeout=10  # Add a timeout to avoid hanging
+            )
+            
+            if response.status_code != 200:
+                logger.error(f"Anthropic API error: {response.status_code} - {response.text}")
+                return None
+                
+            # Parse the response
+            response_data = response.json()
+            if not response_data.get('content'):
+                logger.error(f"Unexpected Anthropic API response format: {response_data}")
+                return None
+                
+            summary = response_data.get('content', [{}])[0].get('text', '')
+            
+            if not summary:
+                logger.error("Anthropic API returned empty summary")
+                return None
+                
+            # Log and return
+            logger.info(f"Generated summary: {summary[:50]}...")
+            return summary
+            
+        except requests.exceptions.RequestException as e:
+            logger.error(f"Error making request to Anthropic API: {str(e)}")
+            return None
+        
+    except Exception as e:
+        logger.error(f"Error summarizing messages with Anthropic: {str(e)}")
+        return None
+
+async def process_telegram_messages_for_summary(raw_messages, limit=10, user_id=None):
+    """
+    Process raw telegram messages for the summary view.
+    Groups messages by chat and applies special formatting for channels with multiple messages.
+    
+    Args:
+        raw_messages: List of raw Telegram messages
+        limit: Maximum number of summaries to return
+        user_id: The user's Telegram ID for caching summaries
+    
+    Returns:
+        List of summaries, either one per chat or combined for chats with multiple messages
+    """
+    if not raw_messages:
+        logger.warning("No messages to process for summary")
+        return []
+    
+    logger.info(f"Processing {len(raw_messages)} raw messages for summary")
+    
+    # Group messages by chat_name
+    chat_messages = {}
+    for message in raw_messages:
+        chat_name = message.get('chat_name', 'Unknown')
+        if chat_name not in chat_messages:
+            chat_messages[chat_name] = []
+        chat_messages[chat_name].append(message)
+    
+    # Sort messages in each chat by timestamp (newest first)
+    for chat_name in chat_messages:
+        chat_messages[chat_name].sort(key=lambda x: x.get('timestamp', 0), reverse=True)
+    
+    summary_entries = []
+    
+    for chat_name, messages in chat_messages.items():
+        # If more than one message in this chat and we have a user_id, consider summarizing
+        if len(messages) > 1 and user_id:
+            # Extract chat_id from the first message
+            chat_id = messages[0].get('chat_id')
+            
+            # Skip if no chat_id is present
+            if not chat_id:
+                logger.warning(f"No chat_id found for {chat_name}, skipping summarization")
+                message_text = messages[0].get('message_text', 'No message content')
+                is_ai_summary = False
+                is_cached = False
+                continue
+            
+            # Get latest message details for caching checks
+            latest_message = max(messages, key=lambda x: x.get('timestamp', 0))
+            latest_message_id = latest_message.get('id')
+            latest_timestamp = latest_message.get('timestamp')
+            
+            # Check if we should generate a new summary
+            cached_summary = get_cached_summary(user_id, chat_id)
+            try:
+                should_generate = should_generate_new_summary(user_id, chat_id, chat_name, messages)
+            except Exception as e:
+                logger.error(f"Error checking if summary should be generated: {str(e)}")
+                should_generate = True  # Default to generating a new summary if there's an error
+            
+            # Default values
+            is_ai_summary = False
+            is_cached = False
+            
+            if should_generate:
+                logger.info(f"Generating new summary for chat {chat_name} (user_id: {user_id}, chat_id: {chat_id})")
+                # Use up to 5 recent messages for summarization
+                messages_to_summarize = messages[:5]
+                # Generate a summary for multiple messages
+                try:
+                    ai_summary = await summarize_messages_with_anthropic(messages_to_summarize)
+                    
+                    if ai_summary:
+                        logger.info(f"Successfully generated AI summary for {chat_name}")
+                        message_text = ai_summary
+                        is_ai_summary = True
+                        
+                        # Store in cache
+                        save_summary_to_cache(
+                            user_id=user_id,
+                            chat_id=chat_id,
+                            chat_name=chat_name,
+                            summary_text=ai_summary,
+                            message_count=len(messages),
+                            latest_message_id=latest_message_id,
+                            latest_timestamp=latest_timestamp
+                        )
+                    else:
+                        # Fallback to the latest message text if summarization fails
+                        logger.warning(f"AI summarization failed for {chat_name}, using latest message text")
+                        message_text = messages[0].get('message_text', 'No message content')
+                except Exception as e:
+                    logger.error(f"Error generating summary for {chat_name}: {str(e)}")
+                    message_text = messages[0].get('message_text', 'No message content')
+            else:
+                # Use cached summary
+                if cached_summary:
+                    logger.info(f"Using cached summary for chat {chat_name}")
+                    message_text = cached_summary['summary_text']
+                    is_ai_summary = True
+                    is_cached = True
+                else:
+                    # Fallback to the latest message text if no cached summary
+                    logger.info(f"No cached summary for {chat_name}, using latest message text")
+                    message_text = messages[0].get('message_text', 'No message content')
+        else:
+            # For single messages, just use the text directly
+            message_text = messages[0].get('message_text', 'No message content')
+            is_ai_summary = False
+            is_cached = False
+        
+        # Create a summary entry for this chat
+        summary_entry = {
+            'chat_name': chat_name,
+            'message_text': message_text,
+            'timestamp': messages[0].get('timestamp', 0),  # Use the timestamp of the most recent message
+            'is_ai_summary': is_ai_summary,
+            'is_cached': is_cached
+        }
+        
+        logger.info(f"Created summary entry for {chat_name}: AI={is_ai_summary}, Cached={is_cached}")
+        summary_entries.append(summary_entry)
+    
+    # Sort all summary entries by timestamp (newest first)
+    summary_entries.sort(key=lambda x: x.get('timestamp', 0), reverse=True)
+    
+    # Return only the limited number of entries
+    return summary_entries[:limit]
+
+@app.route('/summary')
+@login_required
+def summary():
+    """Summary page showing recent message summaries."""
+    # Get the user's Telegram ID
+    user_id = session.get('user', {}).get('id')
+    
+    if not user_id:
+        flash('Session expired. Please login again.', 'error')
+        return redirect(url_for('login'))
+    
+    # Get recent messages from Telegram
+    try:
+        raw_messages = asyncio.run(get_recent_telegram_messages(user_id, 30))  # Get more messages to group by chat
+        messages = asyncio.run(process_telegram_messages_for_summary(raw_messages, 10, user_id))
+    except Exception as e:
+        logger.error(f"Error getting recent messages for summary: {e}")
+        messages = []
+    
+    # Render the summary template
+    return render_template('summary.html', messages=messages)
+
+@app.route('/refresh_summary')
+@login_required
+def refresh_summary():
+    """API endpoint to refresh summary data."""
+    try:
+        user_id = session.get('user', {}).get('id')
+        logger.info(f"Refresh summary request received for user_id: {user_id}")
+        
+        if not user_id:
+            # Try to get the first user as a fallback
+            logger.warning("No user ID in session, trying to get first user from database")
+            conn = get_db_connection()
+            user = conn.execute('SELECT * FROM users LIMIT 1').fetchone()
+            conn.close()
+            
+            if user:
+                user_id = user['telegram_id']
+                logger.info(f"Using first user from database: {user_id}")
+                # Update the session with the user info
+                session['user'] = {
+                    'id': user_id,
+                    'phone': user['phone_number'],
+                    'first_name': user['first_name'],
+                    'last_name': user['last_name'],
+                    'username': user['username']
+                }
+            else:
+                logger.error("No user found in database for fallback")
+                return jsonify({'success': False, 'error': 'No user found. Please login again.'})
+        
+        logger.info(f"Getting recent Telegram messages for summary, user_id: {user_id}")
+        raw_messages = run_async(get_recent_telegram_messages(user_id, 30))
+        logger.info(f"Retrieved {len(raw_messages)} raw messages from Telegram")
+        
+        logger.info(f"Processing messages for summary display")
+        messages = run_async(process_telegram_messages_for_summary(raw_messages, 10, user_id))
+        logger.info(f"Processed {len(messages)} messages for summary display")
+        
+        # Log message details for debugging
+        for idx, msg in enumerate(messages):
+            logger.info(f"Summary message {idx+1}: {msg.get('chat_name')} - {msg.get('message_text', '')[:30]}...")
+        
+        logger.info(f"Returning {len(messages)} summary messages to client")
+        return jsonify({'success': True, 'messages': messages})
+    except Exception as e:
+        logger.error(f"Error refreshing summary data: {str(e)}", exc_info=True)
+        return jsonify({'success': False, 'error': str(e)})
+
+async def get_available_chats(user_id):
+    """Get non-archived chats for a user, sorted by most recent activity.
+    
+    Args:
+        user_id: The user's Telegram ID
+        
+    Returns:
+        Dictionary of chats with chat_id as key and dict with name, muted status, and last_activity as value
+    """
+    logger.info(f"Getting available chats for user {user_id}")
+    
+    # Create a unique session name for this request
+    session_id = f"telegram_session_{user_id}_{int(time.time())}"
+    
+    # Create client using a StringSession instead of SQLite
+    client = TelegramClient(StringSession(), API_ID, API_HASH)
+    
+    # Connect to Telegram
+    try:
+        await client.connect()
+        
+        # Check if authorized - if not, use the web_login_session
+        if not await client.is_user_authorized():
+            logger.info("Using web_login_session for authorization")
+            # Load the auth key from the web_login_session
+            web_session = TelegramClient(WEB_LOGIN_SESSION_PATH, API_ID, API_HASH)
+            await web_session.connect()
+            
+            if not await web_session.is_user_authorized():
+                logger.error("Not authorized. Please log in first.")
+                await web_session.disconnect()
+                await client.disconnect()
+                return {}
+            
+            # Export the session string
+            session_string = StringSession.save(web_session.session)
+            await web_session.disconnect()
+            
+            # Reconnect with the session string
+            await client.disconnect()
+            client = TelegramClient(StringSession(session_string), API_ID, API_HASH)
+            await client.connect()
+            
+            if not await client.is_user_authorized():
+                logger.error("Failed to transfer session. Please log in again.")
+                await client.disconnect()
+                return {}
+        
+        try:
+            # Get only unarchived dialogs with a larger limit to show more chats
+            dialogs = await client.get_dialogs(limit=100, archived=False)
+            
+            logger.info(f"Found {len(dialogs)} non-archived dialogs/chats")
+            
+            # Create a dictionary of chat information including mute status and last activity
+            chats_dict = {}
+            
+            for dialog in dialogs:
+                chat_id = dialog.entity.id
+                chat_name = get_display_name(dialog.entity)
+                is_muted = bool(dialog.dialog.notify_settings.mute_until)
+                last_activity = dialog.date.timestamp() if dialog.date else 0
+                
+                # Skip Telegram service chat (unless we want to include it)
+                if chat_id == 777000 and chat_name == "Telegram":
+                    continue
+                    
+                # Include all chat types, even one-way channels
+                # Add indicator for channel type
+                is_channel = dialog.is_channel and not dialog.is_group
+                
+                # Get the most recent message preview only for visible dialogs
+                preview_text = ""
+                try:
+                    if hasattr(dialog, 'message') and dialog.message and dialog.message.message:
+                        # Use the already loaded message to avoid additional API calls
+                        preview_text = dialog.message.message[:30] + "..." if len(dialog.message.message) > 30 else dialog.message.message
+                except Exception as e:
+                    logger.error(f"Error getting preview text for chat {chat_name}: {e}")
+                
+                chats_dict[chat_id] = {
+                    'name': chat_name,
+                    'is_muted': is_muted,
+                    'is_selected': str(chat_id) in config.MONITORED_CHATS or chat_id in config.MONITORED_CHATS,
+                    'last_activity': last_activity,
+                    'preview_text': preview_text,
+                    'is_channel': is_channel
+                }
+                
+                logger.info(f"Chat: {chat_name} (ID: {chat_id}), Muted: {is_muted}, Last activity: {last_activity}")
+            
+            logger.info(f"Returning {len(chats_dict)} chats")
+            return chats_dict
+            
+        except Exception as e:
+            logger.error(f"Error getting dialogs: {e}")
+            return {}
+            
+    except Exception as e:
+        logger.error(f"Error connecting to Telegram: {e}")
+        return {}
+    finally:
+        # Disconnect the client
+        await client.disconnect()
+
+@app.route('/chat_selection', methods=['GET', 'POST'])
+@login_required
+def chat_selection():
+    """Chat selection page."""
+    # Get the user's Telegram ID
+    user_id = session.get('user', {}).get('id')
+    
+    if request.method == 'POST':
+        # Handle form submission
+        try:
+            # Get selected chats from form
+            selected_chats = []
+            for key in request.form:
+                if key.startswith('chat_'):
+                    chat_id = key.replace('chat_', '')
+                    # Try to convert to integer if possible
+                    try:
+                        chat_id = int(chat_id)
+                    except ValueError:
+                        pass
+                    selected_chats.append(chat_id)
+            
+            logger.info(f"Selected chats: {selected_chats}")
+            
+            # Update the MONITORED_CHATS in config.py
+            config_content = ""
+            with open('config.py', 'r') as f:
+                lines = f.readlines()
+                for line in lines:
+                    if line.startswith('MONITORED_CHATS ='):
+                        line = f"MONITORED_CHATS = {repr(selected_chats)}\n"
+                    config_content += line
+            
+            with open('config.py', 'w') as f:
+                f.write(config_content)
+            
+            # Reload the config module
+            import importlib
+            importlib.reload(config)
+            
+            flash('Chat selection updated successfully', 'success')
+            return redirect(url_for('chat_selection'))
+        except Exception as e:
+            logger.error(f"Error updating chat selection: {e}")
+            flash(f'Error updating chat selection: {e}', 'error')
+    
+    # Get available chats
+    available_chats = run_async(get_available_chats(user_id))
+    
+    # Sort chats by last activity (most recent first)
+    sorted_chats = {}
+    if available_chats:
+        # Convert to list of (chat_id, chat_info) tuples, sort by last_activity, and convert back to dict
+        sorted_chats_list = sorted(
+            available_chats.items(), 
+            key=lambda x: x[1]['last_activity'], 
+            reverse=True
+        )
+        sorted_chats = dict(sorted_chats_list)
+    
+    return render_template('chat_selection.html', available_chats=sorted_chats)
 
 if __name__ == '__main__':
     # Initialize the database directly before running the app

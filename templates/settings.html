@@ -3,6 +3,215 @@
 {% block title %}Settings{% endblock %}
 
 {% block content %}
+<style>
+    /* Chat selection styling */
+    .chat-selection-card {
+        background-color: #ffffff;
+        border-radius: 12px;
+        box-shadow: 0 2px 10px rgba(0, 0, 0, 0.05);
+        padding: 20px;
+        margin-bottom: 25px;
+    }
+    
+    .chat-selection-hint {
+        color: #666;
+        font-size: 14px;
+        margin-bottom: 15px;
+    }
+    
+    .chat-selection-note {
+        color: #888;
+        font-size: 13px;
+        margin-top: -10px;
+        margin-bottom: 15px;
+        font-style: italic;
+    }
+    
+    .chat-selection-controls {
+        display: flex;
+        gap: 10px;
+        margin-bottom: 15px;
+    }
+    
+    .btn-select-all, .btn-select-none {
+        background: none;
+        border: 1px solid #ddd;
+        border-radius: 20px;
+        padding: 5px 15px;
+        font-size: 13px;
+        cursor: pointer;
+        transition: all 0.2s ease;
+    }
+    
+    .btn-select-all {
+        color: #e91e63;
+        border-color: #e91e63;
+    }
+    
+    .btn-select-none {
+        color: #666;
+    }
+    
+    .btn-select-all:hover {
+        background-color: #e91e63;
+        color: white;
+    }
+    
+    .btn-select-none:hover {
+        background-color: #f5f5f5;
+    }
+    
+    .chat-list {
+        max-height: 700px;
+        overflow-y: auto;
+        padding-right: 5px;
+    }
+    
+    .chat-item {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        padding: 12px 0;
+        border-bottom: 1px solid #f0f0f0;
+    }
+    
+    .chat-item:last-child {
+        border-bottom: none;
+    }
+    
+    .chat-checkbox-wrapper {
+        display: flex;
+        align-items: center;
+        flex: 1;
+    }
+    
+    .chat-checkbox {
+        appearance: none;
+        -webkit-appearance: none;
+        width: 20px;
+        height: 20px;
+        border: 2px solid #ddd;
+        border-radius: 4px;
+        margin-right: 12px;
+        position: relative;
+        cursor: pointer;
+        transition: all 0.2s ease;
+    }
+    
+    .chat-checkbox:checked {
+        background-color: #e91e63;
+        border-color: #e91e63;
+    }
+    
+    .chat-checkbox:checked::after {
+        content: '✓';
+        position: absolute;
+        color: white;
+        font-size: 14px;
+        top: 50%;
+        left: 50%;
+        transform: translate(-50%, -50%);
+    }
+    
+    .chat-label {
+        cursor: pointer;
+        flex: 1;
+    }
+    
+    .chat-name {
+        font-weight: 500;
+        color: #333;
+        margin-bottom: 3px;
+    }
+    
+    .chat-preview {
+        font-size: 12px;
+        color: #888;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        max-width: 250px;
+    }
+    
+    .chat-status {
+        margin-left: 10px;
+    }
+    
+    .muted-indicator {
+        color: #999;
+        font-size: 16px;
+    }
+    
+    .channel-indicator {
+        color: #999;
+        font-size: 14px;
+        margin-left: 5px;
+        vertical-align: middle;
+    }
+    
+    .chat-empty-state {
+        padding: 20px;
+        text-align: center;
+        color: #666;
+        background-color: #f9f9f9;
+        border-radius: 8px;
+    }
+    
+    .chat-list::-webkit-scrollbar {
+        width: 6px;
+    }
+    
+    .chat-list::-webkit-scrollbar-track {
+        background: #f5f5f5;
+        border-radius: 10px;
+    }
+    
+    .chat-list::-webkit-scrollbar-thumb {
+        background: #ddd;
+        border-radius: 10px;
+    }
+    
+    .chat-list::-webkit-scrollbar-thumb:hover {
+        background: #ccc;
+    }
+    
+    .form-check.mb-2 {
+        padding-left: 25px;
+    }
+    
+    /* Chat Selection Link Card */
+    .chat-selection-link-card {
+        background-color: #f8f9fa;
+        border-radius: 10px;
+        padding: 20px;
+        margin-bottom: 25px;
+        border: 1px solid #e9ecef;
+        text-align: center;
+    }
+    
+    .chat-selection-link-card h4 {
+        color: #333;
+        margin-bottom: 10px;
+    }
+    
+    .chat-selection-link-card p {
+        color: #6c757d;
+        margin-bottom: 15px;
+    }
+    
+    .chat-selection-link-card .btn {
+        background-color: white;
+        color: #e91e63;
+        border-color: #e91e63;
+        transition: all 0.3s;
+    }
+    
+    .chat-selection-link-card .btn:hover {
+        background-color: #e91e63;
+        color: white;
+    }
+</style>
+
 <div class="container">
     <h1>Settings</h1>
     
@@ -38,6 +247,15 @@
                     <label for="max_sms_length">Maximum SMS length</label>
                     <input type="number" class="form-control" id="max_sms_length" name="max_sms_length" value="{{ settings.max_sms_length }}" min="50" max="1000">
                     <small class="form-text text-muted">Maximum length of SMS messages. Messages longer than this will be truncated.</small>
+                </div>
+                
+                <!-- Chat Selection Link -->
+                <div class="form-group mt-3">
+                    <div class="chat-selection-link-card">
+                        <h4>Chat Selection</h4>
+                        <p>Choose which Telegram chats to monitor for SMS forwarding</p>
+                        <a href="{{ url_for('chat_selection') }}" class="btn btn-outline-primary">Manage Chat Selection</a>
+                    </div>
                 </div>
                 
                 <h3>Rate Limiting Settings</h3>

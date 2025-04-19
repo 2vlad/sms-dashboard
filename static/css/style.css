@@ -1,4 +1,5 @@
 /* Monochrome Mobile-Friendly Styles for Telegram to SMS Forwarder */
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@100;200;300;400;500;600;700&display=swap');
 
 :root {
     --color-primary: #333;
@@ -34,7 +35,8 @@
 }
 
 body {
-    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    font-family: 'Inter', sans-serif;
+    font-weight: 300;
     line-height: 1.5;
     color: var(--color-primary);
     background-color: var(--color-light);

@@ -10,7 +10,7 @@ ONLY_NON_MUTED_CHATS = True
 
 # List of chat usernames or IDs to monitor (if FORWARD_ALL_CHATS is False)
 # Example: ['user1', 'user2', 'group1', 123456789]
-MONITORED_CHATS = ['me']
+MONITORED_CHATS = [264409467, 1894658755, 128696146, 89118240, 1744645276, 257621, 1012166586, 320320489, 301587810, 151742, 401570492, 348332, 289922440, 6896576313]
 
 # Set to True to include the sender's name in the SMS
 INCLUDE_SENDER_NAME = True

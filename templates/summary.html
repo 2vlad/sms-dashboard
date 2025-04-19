@@ -1,0 +1,46 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Message Summary</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/summary.css') }}">
+</head>
+<body class="summary-page">
+    <div class="summary-container">
+        <header class="summary-header">
+            <div class="header-content">
+                <div class="logo-container">
+                    <img src="{{ url_for('static', filename='images/logo.svg') }}" alt="SUMMM" class="logo-image" width="123" height="36">
+                </div>
+            </div>
+        </header>
+
+        <div class="messages-container">
+            {% if messages %}
+                {% for message in messages %}
+                    <div class="message-summary">
+                        <div class="message-line">
+                            <h2 class="summary-chat-name">{{ message.chat_name }}</h2>
+                            {% if message.multi_messages %}
+                                {% for i in range(1, message.message_count + 1) %}
+                                    <span class="summary-message-text">{{ message.messages[i-1].message_text }}</span>
+                                {% endfor %}
+                            {% else %}
+                                <span class="summary-message-text">{{ message.message_text }}</span>
+                            {% endif %}
+                        </div>
+                    </div>
+                {% endfor %}
+            {% else %}
+                <div class="no-messages">
+                    <p>No recent messages found</p>
+                </div>
+            {% endif %}
+        </div>
+    </div>
+
+    <script src="{{ url_for('static', filename='js/summary.js') }}"></script>
+</body>
+</html> 

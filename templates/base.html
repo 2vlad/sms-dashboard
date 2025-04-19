@@ -26,6 +26,16 @@
                     </a>
                 </li>
                 <li class="nav-item">
+                    <a href="{{ url_for('summary') }}" class="nav-link {% if request.path == url_for('summary') %}active{% endif %}">
+                        <i class="fas fa-list-alt"></i> Summary
+                    </a>
+                </li>
+                <li class="nav-item">
+                    <a href="{{ url_for('chat_selection') }}" class="nav-link {% if request.path == url_for('chat_selection') %}active{% endif %}">
+                        <i class="fas fa-comments"></i> Chat Selection
+                    </a>
+                </li>
+                <li class="nav-item">
                     <a href="{{ url_for('settings') }}" class="nav-link {% if request.path == url_for('settings') %}active{% endif %}">
                         <i class="fas fa-cog"></i> Settings
                     </a>
